@@ -4,12 +4,12 @@
 set -e
 
 DISTRIB_RELEASE="${DISTRIB_RELEASE:-24.04}"
-BASE_IMAGE_NAME="${BASE_IMAGE_NAME:-devcontainer-ubuntu${DISTRIB_RELEASE}-egl-desktop-base}"
+BASE_IMAGE_NAME="${BASE_IMAGE_NAME:-devcontainer-ubuntu-egl-desktop-base}"
 REGISTRY="${REGISTRY:-ghcr.io}"
 GITHUB_USER="${GITHUB_USER:-tatsuyai713}"
 PUSH_LATEST="${PUSH_LATEST:-false}"
 
-LOCAL_IMAGE="${BASE_IMAGE_NAME}:latest"
+LOCAL_IMAGE="${BASE_IMAGE_NAME}:${DISTRIB_RELEASE}"
 REMOTE_IMAGE="${REGISTRY}/${GITHUB_USER}/${BASE_IMAGE_NAME}:${DISTRIB_RELEASE}"
 REMOTE_LATEST="${REGISTRY}/${GITHUB_USER}/${BASE_IMAGE_NAME}:latest"
 
@@ -65,7 +65,7 @@ if [ "${PUSH_LATEST}" = "true" ]; then
 fi
 echo ""
 echo "To use this image in build-user-image.sh:"
-echo "  BASE_IMAGE_NAME=${REGISTRY}/${GITHUB_USER}/devcontainer-ubuntu${DISTRIB_RELEASE}-egl-desktop-base \\"
+echo "  BASE_IMAGE_NAME=${REGISTRY}/${GITHUB_USER}/devcontainer-ubuntu-egl-desktop-base \\"
 echo "  BASE_IMAGE_TAG=${DISTRIB_RELEASE} \\"
 echo "  ./build-user-image.sh"
 echo "========================================"

@@ -4,14 +4,14 @@
 set -e
 
 DISTRIB_RELEASE="${DISTRIB_RELEASE:-24.04}"
-BASE_IMAGE_NAME="${BASE_IMAGE_NAME:-devcontainer-ubuntu${DISTRIB_RELEASE}-egl-desktop-base}"
+BASE_IMAGE_NAME="${BASE_IMAGE_NAME:-devcontainer-ubuntu-egl-desktop-base}"
 NO_CACHE="${NO_CACHE:-false}"
 
 echo "========================================"
 echo "Building Base Image"
 echo "========================================"
 echo "Distribution: Ubuntu ${DISTRIB_RELEASE}"
-echo "Image name: ${BASE_IMAGE_NAME}:latest"
+echo "Image name: ${BASE_IMAGE_NAME}:${DISTRIB_RELEASE}"
 echo "No cache: ${NO_CACHE}"
 echo "========================================"
 echo ""
@@ -26,7 +26,7 @@ if [ "${NO_CACHE}" = "true" ]; then
 fi
 
 BUILD_CMD="${BUILD_CMD} --build-arg DISTRIB_RELEASE=${DISTRIB_RELEASE}"
-BUILD_CMD="${BUILD_CMD} -t ${BASE_IMAGE_NAME}:latest .."
+BUILD_CMD="${BUILD_CMD} -t ${BASE_IMAGE_NAME}:${DISTRIB_RELEASE} .."
 
 eval ${BUILD_CMD}
 
@@ -34,7 +34,7 @@ echo ""
 echo "========================================"
 echo "Base image built successfully!"
 echo "========================================"
-echo "Image: ${BASE_IMAGE_NAME}:latest"
+echo "Image: ${BASE_IMAGE_NAME}:${DISTRIB_RELEASE}"
 echo ""
 echo "Next step: Build user-specific image"
 echo "  ./build-user-image.sh"

@@ -6,7 +6,7 @@ set -e
 # Configuration
 BASE_IMAGE_NAME="${BASE_IMAGE_NAME:-ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base}"
 BASE_IMAGE_TAG="${BASE_IMAGE_TAG:-24.04}"
-USER_IMAGE_NAME="${USER_IMAGE_NAME:-devcontainer-ubuntu24.04-egl-desktop-base}"
+USER_IMAGE_NAME="${USER_IMAGE_NAME:-devcontainer-ubuntu-egl-desktop-base}"
 USER_IMAGE_TAG="${USER_IMAGE_TAG:-$(whoami)}"
 NO_CACHE="${NO_CACHE:-false}"
 
