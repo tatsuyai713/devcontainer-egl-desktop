@@ -2,6 +2,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+# Version pinning for external dependencies (updated: 2025-12-13)
+ARG VIRTUALGL_VERSION=3.1.4
+ARG KASMVNC_VERSION=1.4.0
+ARG SELKIES_VERSION=1.6.2
+ARG NVIDIA_VAAPI_DRIVER_VERSION=0.0.14
+ARG RUSTDESK_VERSION=1.4.4
+
 # Supported base images: Ubuntu 24.04, 22.04, 20.04
 ARG DISTRIB_IMAGE=ubuntu
 ARG DISTRIB_RELEASE=24.04
@@ -9,16 +16,22 @@ FROM ${DISTRIB_IMAGE}:${DISTRIB_RELEASE}
 ARG DISTRIB_IMAGE
 ARG DISTRIB_RELEASE
 
-LABEL maintainer="https://github.com/ehfd,https://github.com/danisla"
+# Re-declare version args after FROM
+ARG VIRTUALGL_VERSION
+ARG KASMVNC_VERSION
+ARG SELKIES_VERSION
+ARG NVIDIA_VAAPI_DRIVER_VERSION
+ARG RUSTDESK_VERSION
+
+LABEL maintainer="https://github.com/tatsuyai713"
 
 ARG DEBIAN_FRONTEND=noninteractive
-# Configure rootless user environment for constrained conditions without escalated root privileges inside containers
 ARG TZ=UTC
-ENV PASSWD=mypasswd
+
+# Install basic system packages (as root, no fakeroot)
 RUN apt-get clean && apt-get update && apt-get dist-upgrade -y && apt-get install --no-install-recommends -y \
         apt-utils \
         dbus-user-session \
-        fakeroot \
         fuse \
         kmod \
         locales \
@@ -29,27 +42,14 @@ RUN apt-get clean && apt-get update && apt-get dist-upgrade -y && apt-get instal
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/* && \
     locale-gen en_US.UTF-8 && \
     ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime && echo "${TZ}" > /etc/timezone && \
-    # Only use sudo-root for root-owned directory (/dev, /proc, /sys) or user/group permission operations, not for apt-get installation or file/directory operations
-    mv -f /usr/bin/sudo /usr/bin/sudo-root && \
-    ln -snf /usr/bin/fakeroot /usr/bin/sudo && \
-    groupadd -g 1000 ubuntu || echo 'Failed to add ubuntu group' && \
-    useradd -ms /bin/bash ubuntu -u 1000 -g 1000 || echo 'Failed to add ubuntu user' && \
-    usermod -a -G adm,audio,cdrom,dialout,dip,fax,floppy,games,input,lp,plugdev,render,ssl-cert,sudo,tape,tty,video,voice ubuntu && \
-    echo "ubuntu ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers && \
-    echo "ubuntu:${PASSWD}" | chpasswd && \
-    chown -R -f -h --no-preserve-root ubuntu:ubuntu / || echo 'Failed to set filesystem ownership in some paths to ubuntu user' && \
-    # Preserve setuid/setgid removed by chown
-    chmod -f 4755 /usr/lib/dbus-1.0/dbus-daemon-launch-helper /usr/bin/chfn /usr/bin/chsh /usr/bin/mount /usr/bin/gpasswd /usr/bin/passwd /usr/bin/newgrp /usr/bin/umount /usr/bin/su /usr/bin/sudo-root /usr/bin/fusermount || echo 'Failed to set chmod setuid for some paths' && \
-    chmod -f 2755 /var/local /var/mail /usr/sbin/unix_chkpwd /usr/sbin/pam_extrausers_chkpwd /usr/bin/expiry /usr/bin/chage || echo 'Failed to set chmod setgid for some paths'
+    # Remove default ubuntu user and group (UID/GID 1000) to avoid conflicts
+    userdel -r ubuntu 2>/dev/null || true && \
+    groupdel ubuntu 2>/dev/null || true
 
 # Set locales
 ENV LANG="en_US.UTF-8"
 ENV LANGUAGE="en_US:en"
 ENV LC_ALL="en_US.UTF-8"
-
-USER 1000
-# Use BUILDAH_FORMAT=docker in buildah
-SHELL ["/usr/bin/fakeroot", "--", "/bin/sh", "-c"]
 
 # Install operating system libraries or packages
 RUN apt-get update && apt-get install --no-install-recommends -y \
@@ -171,9 +171,15 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
         nginx \
         apache2-utils \
         netcat-openbsd && \
-    # Sanitize NGINX path
-    sed -i -e 's/\/var\/log\/nginx\/access\.log/\/dev\/stdout/g' -e 's/\/var\/log\/nginx\/error\.log/\/dev\/stderr/g' -e 's/\/run\/nginx\.pid/\/tmp\/nginx\.pid/g' /etc/nginx/nginx.conf && \
+    # Sanitize NGINX path - comment out user directive for non-root execution
+    sed -i -e 's/\/var\/log\/nginx\/access\.log/\/dev\/stdout/g' -e 's/\/var\/log\/nginx\/error\.log/\/dev\/stderr/g' -e 's/\/run\/nginx\.pid/\/tmp\/nginx\.pid/g' -e 's/^user /#user /' /etc/nginx/nginx.conf && \
     echo "error_log /dev/stderr;" >> /etc/nginx/nginx.conf && \
+    # Make nginx directories writable for non-root users
+    mkdir -p /var/lib/nginx/body /var/lib/nginx/proxy /var/lib/nginx/fastcgi /var/lib/nginx/uwsgi /var/lib/nginx/scgi && \
+    chmod -R 777 /var/lib/nginx && \
+    # Make SSL certificates readable by ssl-cert group members
+    chmod 640 /etc/ssl/private/ssl-cert-snakeoil.key && \
+    chmod 755 /etc/ssl/private && \
     # PipeWire and WirePlumber
     mkdir -pm755 /etc/apt/trusted.gpg.d && curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xFC43B7352BCC0EC8AF2EEB8B25088A0359807596" | gpg --dearmor -o /etc/apt/trusted.gpg.d/pipewire-debian-ubuntu-pipewire-upstream.gpg && \
     mkdir -pm755 /etc/apt/sources.list.d && echo "deb https://ppa.launchpadcontent.net/pipewire-debian/pipewire-upstream/ubuntu $(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | tr -d '\"') main" > "/etc/apt/sources.list.d/pipewire-debian-ubuntu-pipewire-upstream-$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | tr -d '\"').list" && \
@@ -239,7 +245,8 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
         libva-dev \
         libegl-dev \
         libgstreamer-plugins-bad1.0-dev && \
-    NVIDIA_VAAPI_DRIVER_VERSION="$(curl -fsSL "https://api.github.com/repos/elFarto/nvidia-vaapi-driver/releases/latest" | jq -r '.tag_name' | sed 's/[^0-9\.\-]*//g')" && \
+    # Install NVIDIA VAAPI driver
+    NVIDIA_VAAPI_DRIVER_VERSION="$(echo ${NVIDIA_VAAPI_DRIVER_VERSION} | sed 's/[^0-9\.\-]*//g')" && \
     cd /tmp && curl -fsSL "https://github.com/elFarto/nvidia-vaapi-driver/archive/v${NVIDIA_VAAPI_DRIVER_VERSION}.tar.gz" | tar -xzf - && mv -f nvidia-vaapi-driver* nvidia-vaapi-driver && cd nvidia-vaapi-driver && meson setup build && meson install -C build && rm -rf /tmp/*; fi && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/* && \
     echo "/usr/local/nvidia/lib" >> /etc/ld.so.conf.d/nvidia.conf && \
@@ -262,6 +269,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
         \"library_path\": \"libEGL_nvidia.so.0\"\n\
     }\n\
 }" > /usr/share/glvnd/egl_vendor.d/10_nvidia.json
+
 # Expose NVIDIA libraries and paths
 ENV PATH="/usr/local/nvidia/bin${PATH:+:${PATH}}"
 ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
@@ -284,6 +292,7 @@ ENV DISPLAY_DPI=96
 ENV DISPLAY_CDEPTH=24
 ENV VGL_DISPLAY=egl
 ENV KASMVNC_ENABLE=false
+ENV ENABLE_NVIDIA=true
 ENV SELKIES_ENCODER=nvh264enc
 ENV SELKIES_ENABLE_RESIZE=false
 ENV SELKIES_ENABLE_BASIC_AUTH=true
@@ -294,7 +303,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
 
 # Install VirtualGL and make libraries available for preload
-RUN cd /tmp && VIRTUALGL_VERSION="$(curl -fsSL "https://api.github.com/repos/VirtualGL/virtualgl/releases/latest" | jq -r '.tag_name' | sed 's/[^0-9\.\-]*//g')" && \
+RUN cd /tmp && VIRTUALGL_VERSION="$(echo ${VIRTUALGL_VERSION} | sed 's/[^0-9\.\-]*//g')" && \
     if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
     dpkg --add-architecture i386 && \
     curl -fsSL -O "https://github.com/VirtualGL/virtualgl/releases/download/${VIRTUALGL_VERSION}/virtualgl_${VIRTUALGL_VERSION}_amd64.deb" && \
@@ -471,6 +480,7 @@ logout=false\n\
 \n\
 [General]\n\
 BrowserApplication=firefox.desktop" > /etc/xdg/kdeglobals
+
 # KDE environment variables
 ENV DESKTOP_SESSION=plasma
 ENV XDG_SESSION_DESKTOP=KDE
@@ -492,25 +502,6 @@ ENV GTK_IM_MODULE=fcitx
 ENV QT_IM_MODULE=fcitx
 ENV XIM=fcitx
 ENV XMODIFIERS="@im=fcitx"
-
-# Wine, Winetricks, and launchers, this process must be consistent with https://wiki.winehq.org/Ubuntu
-ARG WINE_BRANCH=staging
-RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
-    mkdir -pm755 /etc/apt/keyrings && curl -fsSL -o /etc/apt/keyrings/winehq-archive.key "https://dl.winehq.org/wine-builds/winehq.key" && \
-    curl -fsSL -o "/etc/apt/sources.list.d/winehq-$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | tr -d '\"').sources" "https://dl.winehq.org/wine-builds/ubuntu/dists/$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | tr -d '\"')/winehq-$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | tr -d '\"').sources" && \
-    apt-get update && apt-get install --install-recommends -y \
-        winehq-${WINE_BRANCH} && \
-    apt-get install --no-install-recommends -y \
-        q4wine \
-        playonlinux && \
-    LUTRIS_VERSION="$(curl -fsSL "https://api.github.com/repos/lutris/lutris/releases/latest" | jq -r '.tag_name' | sed 's/[^0-9\.\-]*//g')" && \
-    cd /tmp && curl -o lutris.deb -fsSL "https://github.com/lutris/lutris/releases/download/v${LUTRIS_VERSION}/lutris_${LUTRIS_VERSION}_all.deb" && apt-get install --no-install-recommends -y ./lutris.deb && rm -f lutris.deb && \
-    HEROIC_VERSION="$(curl -fsSL "https://api.github.com/repos/Heroic-Games-Launcher/HeroicGamesLauncher/releases/latest" | jq -r '.tag_name' | sed 's/[^0-9\.\-]*//g')" && \
-    cd /tmp && curl -o heroic_launcher.deb -fsSL "https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/releases/download/v${HEROIC_VERSION}/Heroic-${HEROIC_VERSION}-linux-$(dpkg --print-architecture).deb" && apt-get install --no-install-recommends -y ./heroic_launcher.deb && rm -f heroic_launcher.deb && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/* && \
-    curl -o /usr/bin/winetricks -fsSL "https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks" && \
-    chmod -f 755 /usr/bin/winetricks && \
-    curl -o /usr/share/bash-completion/completions/winetricks -fsSL "https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks.bash-completion"; fi
 
 # Install latest Selkies (https://github.com/selkies-project/selkies) build, Python application, and web application, should be consistent with Selkies documentation
 ARG PIP_BREAK_SYSTEM_PACKAGES=1
@@ -560,8 +551,8 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
         libxtst6 \
         libxext6 && \
     if [ "$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '\"')" \> "20.04" ]; then apt-get install --no-install-recommends -y xcvt libopenh264-dev svt-av1 aom-tools; else apt-get install --no-install-recommends -y mesa-utils-extra; fi && \
-    # Automatically fetch the latest Selkies version and install the components
-    SELKIES_VERSION="$(curl -fsSL "https://api.github.com/repos/selkies-project/selkies/releases/latest" | jq -r '.tag_name' | sed 's/[^0-9\.\-]*//g')" && \
+    # Install Selkies GStreamer components
+    SELKIES_VERSION="$(echo ${SELKIES_VERSION} | sed 's/[^0-9\.\-]*//g')" && \
     cd /opt && curl -fsSL "https://github.com/selkies-project/selkies/releases/download/v${SELKIES_VERSION}/gstreamer-selkies_gpl_v${SELKIES_VERSION}_ubuntu$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '\"')_$(dpkg --print-architecture).tar.gz" | tar -xzf - && \
     cd /tmp && curl -O -fsSL "https://github.com/selkies-project/selkies/releases/download/v${SELKIES_VERSION}/selkies_gstreamer-${SELKIES_VERSION}-py3-none-any.whl" && pip3 install --no-cache-dir --force-reinstall "selkies_gstreamer-${SELKIES_VERSION}-py3-none-any.whl" "websockets<14.0" && rm -f "selkies_gstreamer-${SELKIES_VERSION}-py3-none-any.whl" && \
     cd /opt && curl -fsSL "https://github.com/selkies-project/selkies/releases/download/v${SELKIES_VERSION}/selkies-gstreamer-web_v${SELKIES_VERSION}.tar.gz" | tar -xzf - && \
@@ -569,27 +560,31 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
 
 # Install the KasmVNC web interface and RustDesk for fallback
-RUN KASMVNC_VERSION="$(curl -fsSL "https://api.github.com/repos/kasmtech/KasmVNC/releases/latest" | jq -r '.tag_name' | sed 's/[^0-9\.\-]*//g')" && \
+RUN KASMVNC_VERSION="$(echo ${KASMVNC_VERSION} | sed 's/[^0-9\.\-]*//g')" && \
     cd /tmp && curl -o kasmvncserver.deb -fsSL "https://github.com/kasmtech/KasmVNC/releases/download/v${KASMVNC_VERSION}/kasmvncserver_$(grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | tr -d '\"')_${KASMVNC_VERSION}_$(dpkg --print-architecture).deb" && apt-get update && apt-get install --no-install-recommends -y ./kasmvncserver.deb libdatetime-perl && rm -f kasmvncserver.deb && \
-    RUSTDESK_VERSION="$(curl -fsSL "https://api.github.com/repos/rustdesk/rustdesk/releases/latest" | jq -r '.tag_name' | sed 's/[^0-9\.\-]*//g')" && \
+    RUSTDESK_VERSION="$(echo ${RUSTDESK_VERSION} | sed 's/[^0-9\.\-]*//g')" && \
     cd /tmp && curl -o rustdesk.deb -fsSL "https://github.com/rustdesk/rustdesk/releases/download/${RUSTDESK_VERSION}/rustdesk-${RUSTDESK_VERSION}-$(uname -m).deb" && apt-get update && apt-get install --no-install-recommends -y ./rustdesk.deb && rm -f rustdesk.deb && \
     YQ_VERSION="$(curl -fsSL "https://api.github.com/repos/mikefarah/yq/releases/latest" | jq -r '.tag_name' | sed 's/[^0-9\.\-]*//g')" && \
     cd /tmp && curl -o yq -fsSL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_$(dpkg --print-architecture)" && install ./yq /usr/bin/ && rm -f yq && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
+
+# Apply KasmVNC autoconnect patch (same as noVNC)
+RUN sed -i '/<head>/a <script>if (window.location.search === "" || window.location.search === "?") { window.location.replace(window.location.pathname + "?autoconnect=1&resize=scale"); }</script>' /usr/share/kasmvnc/www/vnc.html
+
 ENV PATH="${PATH:+${PATH}:}/usr/lib/rustdesk"
 ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/lib/rustdesk/lib"
 
 # Add custom packages right below this comment, or use FROM in a new container and replace entrypoint.sh or supervisord.conf, and set ENTRYPOINT to /usr/bin/supervisord
 
-# Copy scripts and configurations used to start the container with `--chown=1000:1000`
-COPY --chown=1000:1000 entrypoint.sh /etc/entrypoint.sh
-RUN chmod -f 755 /etc/entrypoint.sh
-COPY --chown=1000:1000 selkies-gstreamer-entrypoint.sh /etc/selkies-gstreamer-entrypoint.sh
-RUN chmod -f 755 /etc/selkies-gstreamer-entrypoint.sh
-COPY --chown=1000:1000 kasmvnc-entrypoint.sh /etc/kasmvnc-entrypoint.sh
-RUN chmod -f 755 /etc/kasmvnc-entrypoint.sh
-COPY --chown=1000:1000 supervisord.conf /etc/supervisord.conf
-RUN chmod -f 755 /etc/supervisord.conf
+# Copy scripts and configurations as root-owned files from files directory
+COPY files/entrypoint.sh /etc/entrypoint.sh
+RUN chmod 755 /etc/entrypoint.sh
+COPY files/selkies-gstreamer-entrypoint.sh /etc/selkies-gstreamer-entrypoint.sh
+RUN chmod 755 /etc/selkies-gstreamer-entrypoint.sh
+COPY files/kasmvnc-entrypoint.sh /etc/kasmvnc-entrypoint.sh
+RUN chmod 755 /etc/kasmvnc-entrypoint.sh
+COPY files/supervisord.conf /etc/supervisord.conf
+RUN chmod 755 /etc/supervisord.conf
 
 # Configure coTURN script
 RUN echo "#!/bin/bash\n\
@@ -613,32 +608,12 @@ turnserver \
     --log-file=\"stdout\" \
     --allow-loopback-peers \
     \${TURN_EXTRA_ARGS} \$@\
-" > /etc/start-turnserver.sh && chmod -f 755 /etc/start-turnserver.sh
+" > /etc/start-turnserver.sh && chmod 755 /etc/start-turnserver.sh
 
-SHELL ["/bin/sh", "-c"]
-
-USER 0
-# Enable sudo through sudo-root with uid 0
-RUN if [ -d "/usr/libexec/sudo" ]; then SUDO_LIB="/usr/libexec/sudo"; else SUDO_LIB="/usr/lib/sudo"; fi && \
-    chown -R -f -h --no-preserve-root root:root /usr/bin/sudo-root /etc/sudo.conf /etc/sudoers /etc/sudoers.d /etc/sudo_logsrvd.conf "${SUDO_LIB}" || echo 'Failed to provide root permissions in some paths relevant to sudo' && \
-    chmod -f 4755 /usr/bin/sudo-root || echo 'Failed to set chmod setuid for root'
-USER 1000
+# Create directories that users will need
+RUN mkdir -p /tmp/runtime-user && chmod 1777 /tmp/runtime-user
 
 ENV PIPEWIRE_LATENCY="128/48000"
-ENV XDG_RUNTIME_DIR=/tmp/runtime-ubuntu
-ENV PIPEWIRE_RUNTIME_DIR="${PIPEWIRE_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-/tmp}}"
-ENV PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-${XDG_RUNTIME_DIR:-/tmp}/pulse}"
-ENV PULSE_SERVER="${PULSE_SERVER:-unix:${PULSE_RUNTIME_PATH:-${XDG_RUNTIME_DIR:-/tmp}/pulse}/native}"
-
-# dbus-daemon to the below address is required during startup
-ENV DBUS_SYSTEM_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR:-/tmp}/dbus-system-bus"
-
-USER 1000
-ENV SHELL=/bin/bash
-ENV USER=ubuntu
-ENV HOME=/home/ubuntu
-WORKDIR /home/ubuntu
+ENV DISPLAY=":20"
 
 EXPOSE 8080
-
-ENTRYPOINT ["/usr/bin/supervisord"]

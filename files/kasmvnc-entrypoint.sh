@@ -47,6 +47,9 @@ echo 'Waiting for X Socket' && until [ -S "/tmp/.X11-unix/X${DISPLAY#*:}" ]; do 
 
 # Configure NGINX
 if [ "$(echo ${SELKIES_ENABLE_BASIC_AUTH} | tr '[:upper:]' '[:lower:]')" != "false" ]; then htpasswd -bcm "${XDG_RUNTIME_DIR}/.htpasswd" "${SELKIES_BASIC_AUTH_USER:-${USER}}" "${SELKIES_BASIC_AUTH_PASSWORD:-${PASSWD}}"; fi
+
+# Write NGINX config to user-writable location first
+mkdir -p "${XDG_RUNTIME_DIR}/nginx" 2>/dev/null
 echo "# Selkies KasmVNC NGINX Configuration
 server {
     access_log /dev/stdout;
@@ -76,7 +79,17 @@ server {
 
         proxy_pass http$(if [ \"$(echo ${SELKIES_ENABLE_HTTPS} | tr '[:upper:]' '[:lower:]')\" = \"true\" ]; then echo -n "s"; fi)://localhost:${SELKIES_PORT:-8081};
     }
-}" | tee /etc/nginx/sites-available/default > /dev/null
+}" > "${XDG_RUNTIME_DIR}/nginx/default.conf"
+
+# Try to copy to system location if we have permissions
+if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  sudo cp "${XDG_RUNTIME_DIR}/nginx/default.conf" /etc/nginx/sites-available/default 2>/dev/null || \
+    echo "Cannot write to /etc/nginx, using config from ${XDG_RUNTIME_DIR}/nginx/"
+elif [ -w /etc/nginx/sites-available/default ]; then
+  cp "${XDG_RUNTIME_DIR}/nginx/default.conf" /etc/nginx/sites-available/default
+else
+  echo "Warning: Cannot write NGINX config to /etc/nginx. NGINX must be pre-configured or run with user permissions."
+fi
 
 # Run KasmVNC
 if ls ~/.vnc/*\:"${KASMVNC_DISPLAY#*:}".pid >/dev/null 2>&1; then kasmvncserver -kill "${KASMVNC_DISPLAY}"; fi

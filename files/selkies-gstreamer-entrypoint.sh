@@ -45,9 +45,20 @@ if [ -z "${SELKIES_TURN_REST_URI}" ] && { { [ -z "${SELKIES_TURN_USERNAME}" ] ||
   /etc/start-turnserver.sh &
 fi
 
+# Check if NVIDIA support is enabled (default: true for backward compatibility)
+export ENABLE_NVIDIA="${ENABLE_NVIDIA:-true}"
+
 # Extract NVRTC dependency, https://developer.download.nvidia.com/compute/cuda/redist/cuda_nvrtc/LICENSE.txt
-if command -v nvidia-smi &> /dev/null && nvidia-smi >/dev/null 2>&1; then
+if [ "$(echo ${ENABLE_NVIDIA} | tr '[:upper:]' '[:lower:]')" = "true" ] && command -v nvidia-smi &> /dev/null && nvidia-smi >/dev/null 2>&1; then
   NVRTC_DEST_PREFIX="${NVRTC_DEST_PREFIX-/opt/gstreamer}"
+  # Check if we can write to destination, otherwise use user home
+  if [ ! -w "${NVRTC_DEST_PREFIX}/lib" ]; then
+    NVRTC_DEST_PREFIX="${HOME}/.local/gstreamer"
+    mkdir -p "${NVRTC_DEST_PREFIX}/lib" 2>/dev/null
+    export LD_LIBRARY_PATH="${NVRTC_DEST_PREFIX}/lib:${LD_LIBRARY_PATH}"
+    echo "Using user-local NVRTC location: ${NVRTC_DEST_PREFIX}"
+  fi
+  
   CUDA_DRIVER_SYSTEM="$(nvidia-smi --version | grep 'CUDA Version' | cut -d: -f2 | tr -d ' ')"
   NVRTC_ARCH="${NVRTC_ARCH-$(dpkg --print-architecture | sed -e 's/arm64/sbsa/' -e 's/ppc64el/ppc64le/' -e 's/i.*86/x86/' -e 's/amd64/x86_64/' -e 's/unknown/x86_64/')}"
   # TEMPORARY: Cap CUDA version to 12.9 if the detected version is 13.0 or higher for NVRTC compatibility, https://gitlab.freedesktop.org/gstreamer/gstreamer/-/issues/4655
@@ -70,7 +81,9 @@ if command -v nvidia-smi &> /dev/null && nvidia-smi >/dev/null 2>&1; then
   fi
   echo "Selected NVRTC archive: ${NVRTC_ARCHIVE}"
   NVRTC_LIB_ARCH="$(dpkg --print-architecture | sed -e 's/arm64/aarch64-linux-gnu/' -e 's/armhf/arm-linux-gnueabihf/' -e 's/riscv64/riscv64-linux-gnu/' -e 's/ppc64el/powerpc64le-linux-gnu/' -e 's/s390x/s390x-linux-gnu/' -e 's/i.*86/i386-linux-gnu/' -e 's/amd64/x86_64-linux-gnu/' -e 's/unknown/x86_64-linux-gnu/')"
-  cd /tmp && curl -fsSL "${NVRTC_URL}${NVRTC_ARCHIVE}" | tar -xJf - -C /tmp && mv -f cuda_nvrtc* cuda_nvrtc && cd cuda_nvrtc/lib && chmod -f 755 libnvrtc* && rm -f "${NVRTC_DEST_PREFIX}/lib/${NVRTC_LIB_ARCH}/"libnvrtc* && mv -f libnvrtc* "${NVRTC_DEST_PREFIX}/lib/${NVRTC_LIB_ARCH}/" && cd /tmp && rm -rf /tmp/cuda_nvrtc && cd "${HOME}"
+  NVRTC_LIB_DIR="${NVRTC_DEST_PREFIX}/lib/${NVRTC_LIB_ARCH}"
+  mkdir -p "${NVRTC_LIB_DIR}" 2>/dev/null
+  cd /tmp && curl -fsSL "${NVRTC_URL}${NVRTC_ARCHIVE}" | tar -xJf - -C /tmp && mv -f cuda_nvrtc* cuda_nvrtc && cd cuda_nvrtc/lib && chmod -f 755 libnvrtc* 2>/dev/null && rm -f "${NVRTC_LIB_DIR}/"libnvrtc* 2>/dev/null && mv -f libnvrtc* "${NVRTC_LIB_DIR}/" 2>/dev/null && cd /tmp && rm -rf /tmp/cuda_nvrtc && cd "${HOME}"
 fi
 
 # Wait for X server to start
@@ -78,6 +91,9 @@ echo 'Waiting for X Socket' && until [ -S "/tmp/.X11-unix/X${DISPLAY#*:}" ]; do 
 
 # Configure NGINX
 if [ "$(echo ${SELKIES_ENABLE_BASIC_AUTH} | tr '[:upper:]' '[:lower:]')" != "false" ]; then htpasswd -bcm "${XDG_RUNTIME_DIR}/.htpasswd" "${SELKIES_BASIC_AUTH_USER:-${USER}}" "${SELKIES_BASIC_AUTH_PASSWORD:-${PASSWD}}"; fi
+
+# Write NGINX config to user-writable location first
+mkdir -p "${XDG_RUNTIME_DIR}/nginx" 2>/dev/null
 echo "# Selkies NGINX Configuration
 server {
     access_log /dev/stdout;
@@ -173,7 +189,17 @@ server {
     location = /50x.html {
         root /opt/gst-web/;
     }
-}" | tee /etc/nginx/sites-available/default > /dev/null
+}" > "${XDG_RUNTIME_DIR}/nginx/default.conf"
+
+# Try to copy to system location if we have permissions
+if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  sudo cp "${XDG_RUNTIME_DIR}/nginx/default.conf" /etc/nginx/sites-available/default 2>/dev/null || \
+    echo "Cannot write to /etc/nginx, using config from ${XDG_RUNTIME_DIR}/nginx/"
+elif [ -w /etc/nginx/sites-available/default ]; then
+  cp "${XDG_RUNTIME_DIR}/nginx/default.conf" /etc/nginx/sites-available/default
+else
+  echo "Warning: Cannot write NGINX config to /etc/nginx. NGINX must be pre-configured or run with user permissions."
+fi
 
 # Clear the cache registry
 rm -rf "${HOME}/.cache/gstreamer-1.0"

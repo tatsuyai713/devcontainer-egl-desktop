@@ -1,403 +1,836 @@
 # docker-selkies-egl-desktop
 
-KDE Plasma Desktop container designed for Kubernetes, supporting OpenGL EGL and GLX, Vulkan, and Wine/Proton for NVIDIA GPUs through WebRTC and HTML5, providing an open-source remote cloud/HPC graphics or game streaming platform. Directly accesses the GPU without an X.Org X11 Server using EGL with [VirtualGL](https://github.com/VirtualGL/virtualgl) and Vulkan, not requiring `/tmp/.X11-unix` host sockets or host configuration.
+KDE Plasma Desktop container designed for Kubernetes, supporting OpenGL EGL and GLX, Vulkan, and Wine/Proton for NVIDIA GPUs through WebRTC and HTML5, providing an open-source remote cloud/HPC graphics or game streaming platform.
 
-Use [docker-selkies-glx-desktop](https://github.com/selkies-project/docker-selkies-glx-desktop) for a KDE Plasma Desktop container with better performance, having fully optimized OpenGL and Vulkan for NVIDIA GPUs by spawning its own fully isolated X.Org X11 Server, also not using `/tmp/.X11-unix` host sockets.
+---
 
-[![Build](https://github.com/selkies-project/docker-selkies-egl-desktop/actions/workflows/container-publish.yml/badge.svg)](https://github.com/selkies-project/docker-selkies-egl-desktop/actions/workflows/container-publish.yml)
+## 🚀 Key Improvements in This Fork
 
-[![Discord](https://img.shields.io/badge/dynamic/json?logo=discord&label=Discord%20Members&query=approximate_member_count&url=https%3A%2F%2Fdiscordapp.com%2Fapi%2Finvites%2FwDNGDeSW5F%3Fwith_counts%3Dtrue)](https://discord.gg/wDNGDeSW5F)
+This repository is an enhanced fork of the original Selkies EGL Desktop project, with significant improvements for security, usability, and multi-user environments:
 
-**Please read [Troubleshooting](#troubleshooting) first, then use [Discord](https://discord.gg/wDNGDeSW5F) or [GitHub Discussions](https://github.com/selkies-project/docker-selkies-egl-desktop/discussions) for support questions. Please only use [Issues](https://github.com/selkies-project/docker-selkies-egl-desktop/issues) for technical inquiries or bug reports.**
+### Architecture Improvements
+
+- **🏗️ Two-Stage Build System:** Split into base (5-10 GB, pre-built) and user images (~100 MB, 1-2 min build)
+  - Base image contains all system packages and desktop environment
+  - User image adds your specific user with matching UID/GID
+  - No more 30-60 minute builds for every user!
+
+- **🔒 Non-Root Container Execution:** Containers run with user privileges by default
+  - Removed all `fakeroot` hacks and privilege escalation workarounds
+  - Proper permission separation between system and user operations
+  - Sudo access available when needed for specific operations
+
+- **📁 Automatic UID/GID Matching:** File permissions work seamlessly
+  - User image matches your host UID/GID automatically
+  - Mounted host directories have correct ownership
+  - No more "permission denied" errors on shared folders
+
+### User Experience Enhancements
+
+- **🔐 Secure Password Management:** Interactive password input during build
+  - Hidden password entry (no plain text in commands)
+  - Confirmation prompt to prevent typos
+  - Passwords stored securely in the image
+
+- **💻 Ubuntu Desktop Standard Environment:** Full `.bashrc` configuration
+  - Colored prompt with Git branch detection
+  - History optimization (ignoredups, append mode, timestamps)
+  - Useful aliases (ll, la, grep colors, etc.)
+  - Matches Ubuntu Desktop terminal experience exactly
+
+- **🎮 Flexible GPU Selection:** Required command argument for clarity
+  - `all` - Use all available GPUs
+  - `none` - Software rendering (no GPU)
+  - `0,1` - Specific GPU devices
+  - Prevents accidental GPU allocation
+
+- **🖥️ Dual Display Modes:** Choose your streaming protocol
+  - **Selkies GStreamer (default):** WebRTC with low latency, better for gaming
+  - **KasmVNC:** VNC over WebSocket, better compatibility, works without GPU
+  - Switch with simple `vnc` argument
+
+- **🔐 SSL Certificate Management:** Automated HTTPS setup
+  - Interactive certificate generation script
+  - Auto-detection from `ssl/` folder
+  - Priority system: ssl/ folder → environment variables → HTTP fallback
+
+### Developer Experience
+
+- **📦 Version Pinning:** Reproducible builds guaranteed
+  - VirtualGL 3.1.4, KasmVNC 1.4.0, Selkies 1.6.2
+  - NVIDIA VAAPI 0.0.14, RustDesk 1.4.4
+  - No more "it worked yesterday" issues
+
+- **🛠️ Complete Management Scripts:** Shell scripts for all operations
+  - `build-user-image.sh` - Build with password prompt
+  - `start-container.sh <gpu> [vnc]` - Start with GPU selection
+  - `stop/restart/logs/shell-container.sh` - Lifecycle management
+  - `commit-container.sh` - Save your changes
+  - `generate-ssl-cert.sh` - SSL certificate generator
+
+- **👥 Multi-User Support:** Each user gets isolated environment
+  - Container names include username: `devcontainer-egl-desktop-{username}`
+  - Each user builds their own image with their UID/GID
+  - No conflicts when multiple users on same host
+
+- **🔧 Quality of Life Features:**
+  - KasmVNC auto-connects with scaling enabled by default
+  - Host home mounted at `~/host_home` for easy access
+  - Container hostname set to `$(hostname)-Container`
+  - Detailed Japanese documentation (SCRIPTS.md)
+
+- **🌐 Multi-Language Support:** Japanese language environment available
+  - Set `IN_LOCALE=JP` during build for Japanese input (Mozc)
+  - Automatic timezone (Asia/Tokyo) and locale (ja_JP.UTF-8) configuration
+  - fcitx input method framework included
+  - US/English remains the default
+
+### Why This Fork?
+
+| Original Project | This Fork |
+|-----------------|-----------|
+| 30-60 minute build | 1-2 minute build |
+| Root container | User-privilege container |
+| Manual UID/GID setup | Automatic matching |
+| Password in command | Interactive secure input |
+| Generic bash | Ubuntu Desktop bash |
+| GPU auto-detected | GPU explicitly selected |
+| Version drift | Version pinned |
+| Single streaming mode | Dual mode (Selkies/KasmVNC) |
+| Manual SSL setup | Auto-detection + generator |
+| Single user focused | Multi-user optimized |
+| English only | Multi-language (EN/JP) |
+
+---
+
+## Quick Start
+
+```bash
+# 1. Build your user image (password will be prompted)
+./build-user-image.sh
+
+# For Japanese environment:
+IN_LOCALE=JP ./build-user-image.sh
+
+# 2. Generate SSL certificate (optional, for HTTPS)
+./generate-ssl-cert.sh
+
+# 3. Start the container
+./start-container.sh all          # With all GPUs
+./start-container.sh none         # Without GPU
+./start-container.sh 0            # With GPU 0
+./start-container.sh all vnc      # KasmVNC mode
+
+# 4. Access via browser
+# → http://localhost:8080 (or https://localhost:8080 if HTTPS enabled)
+```
+
+That's it! 🎉
+
+---
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Two-Stage Build System](#two-stage-build-system)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Scripts Reference](#scripts-reference)
+- [Configuration](#configuration)
+- [HTTPS/SSL](#httpsssl)
+- [Troubleshooting](#troubleshooting)
+- [Advanced Topics](#advanced-topics)
+
+---
+
+## Prerequisites
+
+- **Docker** 19.03 or later
+- **NVIDIA GPU** (optional, for hardware acceleration)
+  - Driver version 450.80.02 or later
+  - Maxwell generation or newer
+  - NVIDIA Container Toolkit installed
+- **Linux Host** (Ubuntu 20.04+ recommended)
+
+---
+
+## Two-Stage Build System
+
+This project uses a two-stage build approach for fast setup and proper file permissions:
+
+```
+┌─────────────────────────┐
+│   Base Image (5-10 GB)  │  ← Built by maintainers, pull from registry
+│  • All system packages  │
+│  • Desktop environment  │
+│  • Pre-installed apps   │
+└────────────┬────────────┘
+             │
+             ↓ builds from
+┌────────────┴────────────┐
+│ User Image (~100 MB)    │  ← You build this (1-2 minutes)
+│  • Your username        │
+│  • Your UID/GID         │
+│  • Your password        │
+└─────────────────────────┘
+```
+
+**Benefits:**
+
+- ✅ **Fast Setup:** No 30-60 minute build wait
+- ✅ **Proper Permissions:** Files match your host UID/GID
+- ✅ **Multi-User:** Each user gets their own isolated environment
+- ✅ **Easy Updates:** Pull new base image, rebuild user image
+
+**Why UID/GID Matching Matters:**
+
+- When you mount host directories (like `$HOME`), files need matching ownership
+- Without matching UID/GID, you get permission errors
+- The user image automatically matches your host credentials
+
+---
+
+## Installation
+
+### 1. Pull Base Image
+
+The base image is pre-built and available from the registry:
+
+```bash
+# Automatically pulled when building user image
+# Or pull manually:
+docker pull devcontainer-ubuntu24.04-egl-desktop-base:latest
+```
+
+### 2. Build User Image
+
+This creates your personal image with matching UID/GID:
+
+```bash
+./build-user-image.sh
+```
+
+This will:
+
+- Pull the pre-built base image (if not already available)
+- Prompt you to set a password (input is hidden for security)
+- Create a user-specific image matching your host UID/GID
+- Take about 1-2 minutes
+
+**Password Setup:**
+
+- You'll be asked to enter a password twice for confirmation
+- The password is securely stored in the image during build
+- No need to specify password when starting containers
+
+**Environment Variables:**
+
+```bash
+# Use a specific base image version
+BASE_IMAGE_TAG=v1.0 ./build-user-image.sh
+
+# Set password via environment (for automation)
+USER_PASSWORD=mysecurepassword ./build-user-image.sh
+
+# Build without cache
+NO_CACHE=true ./build-user-image.sh
+
+# Build for a different user
+docker build \
+    --build-arg BASE_IMAGE=devcontainer-ubuntu24.04-egl-desktop-base:latest \
+    --build-arg USER_NAME=johndoe \
+    --build-arg USER_UID=1001 \
+    --build-arg USER_GID=1001 \
+    --build-arg USER_PASSWORD=johnspassword \
+    -f files/Dockerfile.user \
+    -t devcontainer-ubuntu24.04-egl-desktop-base:johndoe \
+    .
+```
+
+---
 
 ## Usage
 
-This container is composed fully of vendor-neutral applications and protocols except the NVIDIA userspace driver components, indicating that **there is nothing stopping you from using this container with GPUs of other vendors including AMD and Intel**. Use the container toolkit/runtime or Kubernetes device plugin of each respective vendor, or make sure that it provisions `/dev/dri/card[n]` and `/dev/dri/renderD[128 + n]` devices using `--device=/dev/dri:rwm` **with sufficient host user permissions for the devices (`sudo chmod -R -f 777 /dev/dri` from the host)**, then set the [environment variable `SELKIES_ENCODER`](https://github.com/selkies-project/selkies/blob/main/docs/component.md#encoders) to values including `vah264enc`, `x264enc`, `vp8enc`, or `vp9enc` if using the Selkies WebRTC interface. However, this is not officially supported and issues may arise. This container also supports running without any GPUs with software fallback (set the [environment variable `SELKIES_ENCODER`](https://github.com/selkies-project/selkies/blob/main/docs/component.md#encoders) to values including `x264enc`, `vp8enc`, or `vp9enc` if using the Selkies WebRTC interface).
+### Starting the Container
 
-Container startup may take some time at first launch as it could automatically install NVIDIA driver libraries compatible with the host.
-
-For Windows applications or games, Wine, Winetricks, Lutris, Heroic Launcher, PlayOnLinux, and q4wine are bundled by default. Comment out the section where it is installed within `Dockerfile` if the user wants containers without Wine.
-
-The container requires host NVIDIA GPU driver versions of at least **450.80.02** and preferably **470.42.01** (the latest minor version in each major version), with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) to be also configured on the host for allocating GPUs. The latest minor versions (`xx` in `000.xx.00`) are strongly encouraged. All Maxwell or later generation GPUs in the consumer, professional, or datacenter lineups should not have significant issues running this container, although the Selkies high-performance NVENC backend may not be available. Kepler GPUs are untested and likely does not support the NVENC backend, but can be mostly functional using fallback software acceleration.
-
-The high-performance NVENC backend for the Selkies WebRTC interface is only supported in GPUs listed as supporting `H.264 (AVCHD)` under the `NVENC - Encoding` section of NVIDIA's [Video Encode and Decode GPU Support Matrix](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new). If your GPU is not listed as supporting `H.264 (AVCHD)`, add the [environment variable `SELKIES_ENCODER`](https://github.com/selkies-project/selkies/blob/main/docs/component.md#encoders) to values including `x264enc`, `vp8enc`, or `vp9enc` in your container configuration for falling back to software acceleration, which also has a very good performance depending on your CPU.
-
-There are two web interfaces that may be chosen in this container, the first being the default [Selkies](https://github.com/selkies-project/selkies) WebRTC HTML5 web interface (requires a TURN server or host networking for best performance), and the second being the fallback [KasmVNC](https://github.com/kasmtech/KasmVNC) WebSocket HTML5 web interface. While the KasmVNC interface does not support audio forwarding, it can be useful for troubleshooting the Selkies WebRTC interface or using this container in constrained environments.
-
-The KasmVNC interface can be enabled in place of Selkies by setting `KASMVNC_ENABLE` to `true`. `KASMVNC_THREADS` sets the number of threads KasmVNC should use for frame encoding, defaulting to all threads if not set. When using the KasmVNC interface, environment variables `SELKIES_ENABLE_BASIC_AUTH`, `SELKIES_BASIC_AUTH_USER`, `SELKIES_BASIC_AUTH_PASSWORD`, `SELKIES_ENABLE_RESIZE`, `SELKIES_ENABLE_HTTPS`, `SELKIES_HTTPS_CERT`, `SELKIES_HTTPS_KEY`, `SELKIES_PORT`, `NGINX_PORT`, and `TURN_EXTERNAL_IP`, used with Selkies, are also inherited. As with the Selkies WebRTC interface, the KasmVNC interface username and password will also be set to the environment variables `SELKIES_BASIC_AUTH_USER` and `SELKIES_BASIC_AUTH_PASSWORD`, also using `ubuntu` and the environment variable `PASSWD` by default if not set.
-
-### Running with Docker
-
-**1. Run the container with Docker, Podman, or other NVIDIA-supported container runtimes ([NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) required):**
+The `start-container.sh` script requires a GPU argument:
 
 ```bash
-docker run --name egl -it -d --gpus 1 --runtime nvidia --tmpfs /dev/shm:rw -e TZ=UTC -e DISPLAY_SIZEW=1920 -e DISPLAY_SIZEH=1080 -e DISPLAY_REFRESH=60 -e DISPLAY_DPI=96 -e DISPLAY_CDEPTH=24 -e PASSWD=mypasswd -e SELKIES_ENCODER=nvh264enc -e SELKIES_VIDEO_BITRATE=8000 -e SELKIES_FRAMERATE=60 -e SELKIES_AUDIO_BITRATE=128000 -e SELKIES_BASIC_AUTH_PASSWORD=mypasswd -p 8080:8080 ghcr.io/selkies-project/nvidia-egl-desktop:latest
+# Syntax: ./start-container.sh <gpu> [display_mode]
+
+# GPU options:
+./start-container.sh all          # Use all available GPUs
+./start-container.sh none         # No GPU (software rendering)
+./start-container.sh 0            # Use GPU 0 only
+./start-container.sh 0,1          # Use GPU 0 and 1
+
+# Display mode options (optional second argument):
+./start-container.sh all          # Selkies GStreamer (WebRTC, default)
+./start-container.sh all vnc      # KasmVNC (VNC over WebSocket)
 ```
 
-**Alternatively, use Docker Compose by editing the [`docker-compose.yml`](docker-compose.yml) file:**
+Then open your browser to: <http://localhost:8080>
+
+**Container Features:**
+
+- Automatically removed when stopped (using `--rm` flag)
+- Hostname set to `$(hostname)-Container`
+- Host home directory mounted at `~/host_home`
+- Container name: `devcontainer-egl-desktop-{username}`
+
+### Common Options
 
 ```bash
-# Start the container from the path containing docker-compose.yml
-docker compose up -d
-# Stop the container
-docker compose down
+# Use HTTPS
+./generate-ssl-cert.sh
+./start-container.sh all
+
+# Use a different port
+HTTPS_PORT=9090 ./start-container.sh all
+
+# High resolution (4K)
+DISPLAY_WIDTH=3840 DISPLAY_HEIGHT=2160 ./start-container.sh all
+
+# Foreground mode (see logs directly)
+DETACHED=false ./start-container.sh all
+
+# Custom container name
+CONTAINER_NAME=my-desktop ./start-container.sh all
 ```
 
-**If the Selkies WebRTC HTML5 interface does not connect or is extremely slow, read Step 3 and the [WebRTC and Firewall Issues](#webrtc-and-firewall-issues) section very carefully.**
-
-> NOTE: The container tags available are `latest` and `24.04` for Ubuntu 24.04, `22.04` for Ubuntu 22.04, and `20.04` for Ubuntu 20.04. [Persistent container tags](https://github.com/selkies-project/docker-selkies-egl-desktop/pkgs/container/nvidia-egl-desktop) are available in the form `24.04-20210101010101`. Replace all instances of `mypasswd` with your desired password. `SELKIES_BASIC_AUTH_PASSWORD` will default to `PASSWD` if unspecified. The container must NOT be run in privileged mode.
-
-**For [Apptainer](https://github.com/apptainer/apptainer)/[Singularity](https://github.com/sylabs/singularity) (requiring NVIDIA drivers):**
+### Stopping the Container
 
 ```bash
-# Customize paths
-export SINGULARITY_SELKIES_OVERLAY=~/my_mounting_point/nvidia-egl-desktop.sif
-export SINGULARITY_SELKIES_SCRATCH_HOME=~/nvidia-egl-desktop
-mkdir -pm755 "${SINGULARITY_SELKIES_SCRATCH_HOME}"
-# Change size of overlay storage
-singularity overlay create --sparse --size 1536 "${SINGULARITY_SELKIES_OVERLAY}"
-singularity instance run --overlay "${SINGULARITY_SELKIES_OVERLAY}" --nv --no-mount cwd --home "${SINGULARITY_SELKIES_SCRATCH_HOME}:/home/ubuntu" --env "TZ=UTC,DISPLAY_SIZEW=1920,DISPLAY_SIZEH=1080,DISPLAY_REFRESH=60,DISPLAY_DPI=96,DISPLAY_CDEPTH=24,PASSWD=mypasswd,SELKIES_ENCODER=nvh264enc,SELKIES_VIDEO_BITRATE=8000,SELKIES_FRAMERATE=60,SELKIES_AUDIO_BITRATE=128000,SELKIES_BASIC_AUTH_PASSWORD=mypasswd" docker://ghcr.io/selkies-project/nvidia-egl-desktop:latest egl
+./stop-container.sh
 ```
 
-Change `SELKIES_ENCODER` to `x264enc`, `vp8enc`, or `vp9enc` when using the Selkies interface if you are using software fallback without allocated GPUs or your GPU does not support `H.264 (AVCHD)` under the `NVENC - Encoding` section in NVIDIA's [Video Encode and Decode GPU Support Matrix](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new).
+The container is automatically removed (using `--rm` flag).
 
-The environment variable `VGL_DISPLAY` can also be passed to the container, but only do so after you understand what it implicates with VirtualGL, valid values being either `egl[n]`, or `/dev/dri/card[n]` only when `--device=/dev/dri:rwm` was used for the container.
+---
 
-**2. Connect to the web server with a browser on port 8080. You may also separately configure a reverse proxy to this port for external connectivity.**
+## Scripts Reference
 
-The default username is `ubuntu` for both the web authentication prompt and the container Linux username. The environment variable `PASSWD` (defaulting to `mypasswd`) is the password for the container Linux user account, and `SELKIES_BASIC_AUTH_PASSWORD` is the password for the HTML5 interface authentication prompt. If `SELKIES_ENABLE_BASIC_AUTH` is set to `true` for Selkies but `SELKIES_BASIC_AUTH_PASSWORD` is unspecified, the HTML5 interface password will default to `PASSWD`.
+### Core Scripts
 
-> NOTE: Only one web browser can be connected at a time with the Selkies WebRTC interface. If the signaling connection works, but the WebRTC connection fails, read Step 3 and the [WebRTC and Firewall Issues](#webrtc-and-firewall-issues) section.
+| Script | Description | Usage |
+|--------|-------------|-------|
+| `build-user-image.sh` | Build your user-specific image | `./build-user-image.sh` |
+| `start-container.sh` | Start the desktop container | `./start-container.sh <gpu> [vnc]` |
+| `stop-container.sh` | Stop the container | `./stop-container.sh` |
+| `generate-ssl-cert.sh` | Generate self-signed SSL certificate | `./generate-ssl-cert.sh` |
 
-Additional configurations and environment variables for the Selkies WebRTC HTML5 interface are listed in lines that start with `parser.add_argument` within the [Selkies Main Script](https://github.com/selkies-project/selkies/blob/master/src/selkies_gstreamer/__main__.py) or `selkies-gstreamer --help`.
+### Management Scripts
 
-**3. (Not Applicable for KasmVNC) Read carefully if the Selkies WebRTC HTML5 interface does not connect or is extremely slow.**
+| Script | Description | Usage |
+|--------|-------------|-------|
+| `restart-container.sh` | Restart the container | `./restart-container.sh` |
+| `logs-container.sh` | View container logs | `./logs-container.sh` |
+| `shell-container.sh` | Access container shell | `./shell-container.sh` |
+| `delete-image.sh` | Delete the user-specific image | `./delete-image.sh` |
+| `commit-container.sh` | Save container changes to new image | `./commit-container.sh` |
 
-A [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server) is required because you are self-hosting WebRTC, unlike commercial services using WebRTC.
+For detailed Japanese documentation, see [SCRIPTS.md](SCRIPTS.md).
 
-Choose whether to use host networking, an internal [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server), or an external [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server).
+### Script Examples
 
-- **Internal TURN Server:**
-
-<details markdown>
-  <summary>Open Section</summary>
-
-There is an internal [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server) inside the container that may be used when an external [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server) or host networking is not available.
-
-Add environment variables `-e SELKIES_TURN_PROTOCOL=udp -e SELKIES_TURN_PORT=3478 -e TURN_MIN_PORT=65532 -e TURN_MAX_PORT=65535` (change the ports accordingly) with the `docker run` command (or uncomment the relevant [`docker-compose.yml`](docker-compose.yml) sections), where the `SELKIES_TURN_PORT` should not be used by any other host process or container, and the `TURN_MIN_PORT`/`TURN_MAX_PORT` port range has to contain at least two ports also not used by any other host process or container.
-
-Then, open the ports with the `docker run` arguments `-p 8080:8080 -p 3478:3478 -p 3478:3478/udp -p 65532-65535:65532-65535 -p 65532-65535:65532-65535/udp` (or uncomment the relevant [`docker-compose.yml`](docker-compose.yml) sections) in addition to the web server port.
-
-If UDP cannot be used, at the cost of higher latency and lower performance, omit the ports containing `/udp` and use the environment variable `-e SELKIES_TURN_PROTOCOL=tcp`.
-
-All these ports must be exposed to the internet if you need access over the internet. If you need use TURN within a local network, add `-e SELKIES_TURN_HOST={YOUR_INTERNAL_IP}` with `{YOUR_INTERNAL_IP}` to the internal hostname or IP of the local network. IPv6 addresses must be enclosed with square brackets such as `[::1]`.
-
-</details>
-
-- **Host Networking:**
-
-<details markdown>
-  <summary>Open Section</summary>
-
-The Selkies WebRTC HTML5 interface will likely just start working if you open UDP and TCP ports 49152–65535 in your host server network and add `--network=host` to the above `docker run` command, or `network_mode: 'host'` in `docker-compose.yml`. Note that running multiple desktop containers in one host under this configuration may be problematic and is not recommended. When deploying multiple containers, you must also pass new environment variables such as `-e DISPLAY=:22`, `-e NGINX_PORT=8082`, `-e SELKIES_PORT=8083`, and `-e SELKIES_METRICS_HTTP_PORT=9083` into the container, all not overlapping with any other X11 server or container in the same host. Access the container using the specified `NGINX_PORT`.
-
-However, host networking may be restricted or not be desired because of security reasons or when deploying multiple desktop containers in one host. If not available, check if the container starts working after omitting `--network=host`.
-
-</details>
-
-- **External TURN Server:**
-
-<details markdown>
-  <summary>Open Section</summary>
-
-If having no TURN server does not work, you need an external [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server). Read the [WebRTC and Firewall Issues](#webrtc-and-firewall-issues) section and add the environment variables `-e SELKIES_TURN_HOST=`, `-e SELKIES_TURN_PORT=`, and pick one of `-e SELKIES_TURN_SHARED_SECRET=` or both `-e SELKIES_TURN_USERNAME=` and `-e SELKIES_TURN_PASSWORD=` environment variables to the `docker run` command based on your authentication method.
-
-</details>
-
-### Running with Kubernetes
-
-**1. Create the Kubernetes `Secret` with your authentication password (change keys and values as adequate):**
+**Viewing Logs:**
 
 ```bash
-kubectl create secret generic my-pass --from-literal=my-pass=YOUR_PASSWORD
+# View last 100 lines
+./logs-container.sh
+
+# Follow logs in real-time
+FOLLOW=true ./logs-container.sh
 ```
 
-> NOTE: Replace `YOUR_PASSWORD` with your desired password, and change the name `my-pass` to your preferred name of the Kubernetes secret with the `egl.yml` file changed accordingly as well. It is possible to skip the first step and directly provide the password with `value:` in `egl.yml`, but this exposes the password in plain text.
-
-**2. Create the pod after editing the `egl.yml` file to your needs, explanations are available in the file:**
+**Accessing Shell:**
 
 ```bash
-kubectl create -f egl.yml
+# As your user
+./shell-container.sh
+
+# As root
+AS_ROOT=true ./shell-container.sh
 ```
 
-**If the Selkies WebRTC HTML5 interface does not connect or is extremely slow, read Step 4 and the [WebRTC and Firewall Issues](#webrtc-and-firewall-issues) section very carefully.**
+**Saving Changes:**
 
-> NOTE: The container tags available are `latest` and `24.04` for Ubuntu 24.04, `22.04` for Ubuntu 22.04, and `20.04` for Ubuntu 20.04. [Persistent container tags](https://github.com/selkies-project/docker-selkies-egl-desktop/pkgs/container/nvidia-egl-desktop) are available in the form `24.04-20210101010101`. `SELKIES_BASIC_AUTH_PASSWORD` will default to `PASSWD` if unspecified. The container must NOT be run in privileged mode.
-
-Change `SELKIES_ENCODER` to `x264enc`, `vp8enc`, or `vp9enc` when using the Selkies interface if you are using software fallback without allocated GPUs or your GPU does not support `H.264 (AVCHD)` under the `NVENC - Encoding` section in NVIDIA's [Video Encode and Decode GPU Support Matrix](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new).
-
-**3. Connect to the web server spawned at port 8080. You may configure the ingress endpoint or reverse proxy that your Kubernetes cluster provides to this port for external connectivity.**
-
-The default username is `ubuntu` for both the web authentication prompt and the container Linux username. The environment variable `PASSWD` (defaulting to `mypasswd`) is the password for the container Linux user account, and `SELKIES_BASIC_AUTH_PASSWORD` is the password for the HTML5 interface authentication prompt. If `SELKIES_ENABLE_BASIC_AUTH` is set to `true` for Selkies but `SELKIES_BASIC_AUTH_PASSWORD` is unspecified, the HTML5 interface password will default to `PASSWD`.
-
-> NOTE: Only one web browser can be connected at a time with the Selkies WebRTC interface. If the signaling connection works, but the WebRTC connection fails, read Step 4 and the [WebRTC and Firewall Issues](#webrtc-and-firewall-issues) section.
-
-Additional configurations and environment variables for the Selkies WebRTC HTML5 interface are listed in lines that start with `parser.add_argument` within the [Selkies Main Script](https://github.com/selkies-project/selkies/blob/master/src/selkies_gstreamer/__main__.py) or `selkies-gstreamer --help`.
-
-**4. (Not Applicable for KasmVNC) Read carefully if the Selkies WebRTC HTML5 interface does not connect or is extremely slow.**
-
-A [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server) is required because you are self-hosting WebRTC, unlike commercial services using WebRTC.
-
-Choose whether to use host networking, an internal [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server), or an external [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server).
-
-- **Internal TURN Server:**
-
-<details markdown>
-  <summary>Open Section</summary>
-
-There is an internal [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server) inside the container that may be used when an external [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server) or host networking is not available.
-
-Uncomment the relevant environment variables `SELKIES_TURN_PROTOCOL=udp`, `SELKIES_TURN_PORT=3478`, `TURN_MIN_PORT=65532`, `TURN_MAX_PORT=65535` (change the ports accordingly) within `egl.yml` (within `name:` and `value:`), where the `SELKIES_TURN_PORT` should not be used by any other host process or container, and the `TURN_MIN_PORT`/`TURN_MAX_PORT` port range has to contain at least two ports also not used by any other host process or container. Then, open all of these ports in the Kubernetes configuration `ports:` section in addition to the web server port.
-
-If UDP cannot be used, at the cost of higher latency and lower performance, omit the UDP ports in the configuration and use the environment variable `SELKIES_TURN_PROTOCOL=tcp` (within `name:` and `value:`).
-
-All these ports must be exposed to the internet if you need access over the internet. If you need use TURN within a local network, add the environment variable `SELKIES_TURN_HOST={YOUR_INTERNAL_IP}` (within `name:` and `value:`) with `{YOUR_INTERNAL_IP}` to the internal hostname or IP of the local network. IPv6 addresses must be enclosed with square brackets such as `[::1]`.
-
-</details>
-
-- **Host Networking:**
-
-<details markdown>
-  <summary>Open Section</summary>
-
-Otherwise, the Selkies WebRTC HTML5 interface will likely just start working if you open UDP and TCP ports 49152–65535 in your host server network and uncomment `hostNetwork: true` in `egl.yml`. Note that running multiple desktop containers in one host under this configuration may be problematic and is not recommended. When deploying multiple containers with `hostNetwork: true`, you must also pass new environment variables such as `DISPLAY=:22`, `NGINX_PORT=8082`, `SELKIES_PORT=8083`, and `SELKIES_METRICS_HTTP_PORT=9083` into the container, all not overlapping with any other X11 server or container in the same host. Access the container using the specified `NGINX_PORT`.
-
-However, host networking may be restricted or not be desired because of security reasons or when deploying multiple desktop containers in one host. If not available, check if the container starts working after commenting out `hostNetwork: true`.
-
-</details>
-
-- **External TURN Server:**
-
-<details markdown>
-  <summary>Open Section</summary>
-
-If having no TURN server does not work, you need an external [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server). Read the [WebRTC and Firewall Issues](#webrtc-and-firewall-issues) section and fill in the environment variables `SELKIES_TURN_HOST` and `SELKIES_TURN_PORT`, then pick one of `SELKIES_TURN_SHARED_SECRET` or both `SELKIES_TURN_USERNAME` and `SELKIES_TURN_PASSWORD` environment variables, based on your authentication method.
-
-</details>
-
-## WebRTC and Firewall Issues
-
-Note that this section is only required for the Selkies WebRTC HTML5 interface.
-
-In most cases when either of your server or client has a permissive firewall, the default Google STUN server configuration will work without additional configuration. However, when connecting from networks that cannot be traversed with STUN, a TURN server is required.
-
-**Read the last steps of each Docker/Kubernetes instruction to use an internal TURN server. Alternatively, read the below sections.**
-
-For an easy fix to when the signaling connection works, but the WebRTC connection fails, **open UDP and TCP ports 49152–65535 in your host server network** (or use Full Cone NAT in your network router/infrastructure settings), then add the option `--network=host` to your Docker command (or `network_mode: 'host'` in `docker-compose.yml`), or uncomment `hostNetwork: true` in your `egl.yml` file when using Kubernetes (note that your cluster may have not allowed this, resulting in an error). This exposes your container to the host network, which disables network isolation. Note that running multiple desktop containers in one host under this configuration may be problematic and is not recommended. You must also pass new environment variables such as `-e DISPLAY=:22`, `-e NGINX_PORT=8082`, `-e SELKIES_PORT=8083`, and `-e SELKIES_METRICS_HTTP_PORT=9083` into the container, all not overlapping with any other X11 server or container in the same host. Access the container using the specified `NGINX_PORT`.
-
-If this does not fix the connection issue (normally when the host is behind another additional firewall), you cannot use this fix for security or technical reasons, or when deploying multiple desktop containers in one host, read the below text to set up an external [TURN server](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server).
-
-### Deploying a TURN server
-
-**Read the instructions from [Selkies](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md#turn-server) if want to deploy an external TURN server or use a public TURN server instance. Read the last steps of each Docker/Kubernetes instruction to use an internal TURN server instead.**
-
-### Configuring with Docker
-
-More information is available in the [Selkies](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md) documentation.
-
-With Docker (or Podman), use the `-e` option to add the `SELKIES_TURN_HOST`, `SELKIES_TURN_PORT` environment variables. This is the hostname or IP and the port of the TURN server (3478 in most cases).
-
-You may set `SELKIES_TURN_PROTOCOL` to `tcp` if you are only able to open TCP ports for the coTURN container to the internet, or if the UDP protocol is blocked or throttled in your client network. You may also set `SELKIES_TURN_TLS` to `true` with the `-e` option if TURN over TLS/DTLS was properly configured with valid TLS certificates.
-
-You also require to provide either only the environment variable `SELKIES_TURN_SHARED_SECRET` for time-limited shared secret TURN authentication, or both the environment variables `SELKIES_TURN_USERNAME` and `SELKIES_TURN_PASSWORD` for legacy long-term TURN authentication, depending on your TURN server configuration. Provide just one of these authentication methods, not both.
-
-If there is a [TURN REST API](https://github.com/selkies-project/selkies/blob/main/docs/component.md#turn-rest) server, provide the environment variable `SELKIES_TURN_REST_URI` but not any other authentication credentials to the TURN REST URI within this infrastructure. If there is a shared TURN server within an infrastructure, consider reading the [TURN REST API](https://github.com/selkies-project/selkies/blob/main/docs/component.md#turn-rest) documentation or provide the link to your infrastructure administrator to deploy a TURN REST API server.
-
-### Configuring with Kubernetes
-
-More information is available in the [Selkies](https://github.com/selkies-project/selkies/blob/main/docs/firewall.md) documentation.
-
-Your TURN server will use only one out of three ways to authenticate the client, so only provide one type of authentication method. The time-limited shared secret TURN authentication only requires the Base64 encoded `SELKIES_TURN_SHARED_SECRET`. The legacy long-term TURN authentication requires both `SELKIES_TURN_USERNAME` and `SELKIES_TURN_PASSWORD` credentials. The [TURN REST API](https://github.com/selkies-project/selkies/blob/main/docs/component.md#turn-rest) method only requires the `SELKIES_TURN_REST_URI` URI.
-
-#### TURN REST API
-
-If there is a shared TURN server within an infrastructure, consider reading the [TURN REST API](https://github.com/selkies-project/selkies/blob/main/docs/component.md#turn-rest) documentation or provide the link to your infrastructure administrator to deploy a TURN REST API server.
-
-<details markdown>
-  <summary>Open Section</summary>
-
-Then, uncomment the lines in the `egl.yml` file related to TURN server usage, updating the `SELKIES_TURN_REST_URI` environment variable as needed:
-
-```yaml
-- name: SELKIES_TURN_REST_URI
-  value: "https://turn-rest.myinfrastructure.io:8443/myturnrest"
-- name: SELKIES_TURN_PROTOCOL
-  value: "udp"
-- name: SELKIES_TURN_TLS
-  value: "false"
-```
-
-</details>
-
-#### Time-limited shared secret authentication
-
-<details markdown>
-  <summary>Open Section</summary>
-
-**1. Create a secret containing the TURN shared secret:**
+If you've installed software or made changes in the container:
 
 ```bash
-kubectl create secret generic turn-shared-secret --from-literal=turn-shared-secret=MY_SELKIES_TURN_SHARED_SECRET
+# Save to a new image
+./commit-container.sh
+
+# Save with a custom tag
+COMMIT_TAG=my-setup ./commit-container.sh
+
+# Use the saved image
+IMAGE_NAME=devcontainer-ubuntu24.04-egl-desktop-base:my-setup \
+  CONTAINER_NAME=my-desktop-2 \
+  ./start-container.sh all
 ```
 
-> NOTE: Replace `MY_SELKIES_TURN_SHARED_SECRET` with the shared secret of the TURN server, then changing the name `turn-shared-secret` to your preferred name of the Kubernetes secret, with the `egl.yml` file also being changed accordingly.
-
-**2. Uncomment the lines in the `egl.yml` file related to TURN server usage, updating the `SELKIES_TURN_HOST` and `SELKIES_TURN_PORT` environment variables as needed:**
-
-```yaml
-- name: SELKIES_TURN_HOST
-  value: "turn.example.com"
-- name: SELKIES_TURN_PORT
-  value: "3478"
-- name: SELKIES_TURN_SHARED_SECRET
-  valueFrom:
-    secretKeyRef:
-      name: turn-shared-secret
-      key: turn-shared-secret
-- name: SELKIES_TURN_PROTOCOL
-  value: "udp"
-- name: SELKIES_TURN_TLS
-  value: "false"
-```
-
-> NOTE: It is possible to skip the first step and directly provide the shared secret with `value:`, but this exposes the shared secret in plain text. Set `SELKIES_TURN_PROTOCOL` to `tcp` if you were able to only open TCP ports while creating your own coTURN Deployment/DaemonSet, or if your client network throttles or blocks the UDP protocol at the cost of higher latency and lower performance.
-
-</details>
-
-#### Legacy long-term authentication
-
-<details markdown>
-  <summary>Open Section</summary>
-
-**1. Create a secret containing the TURN password:**
+**Deleting Image:**
 
 ```bash
-kubectl create secret generic turn-password --from-literal=turn-password=MY_SELKIES_TURN_PASSWORD
+# Delete your user image
+./delete-image.sh
+
+# Force delete (removes associated containers too)
+FORCE=true ./delete-image.sh
+
+# Delete a specific user's image
+IMAGE_TAG=username ./delete-image.sh
 ```
 
-> NOTE: Replace `MY_SELKIES_TURN_PASSWORD` with the password of the TURN server, then changing the name `turn-password` to your preferred name of the Kubernetes secret, with the `egl.yml` file also being changed accordingly.
+---
 
-**2. Uncomment the lines in the `egl.yml` file related to TURN server usage, updating the `SELKIES_TURN_HOST`, `SELKIES_TURN_PORT`, and `SELKIES_TURN_USERNAME` environment variables as needed:**
+## Configuration
 
-```yaml
-- name: SELKIES_TURN_HOST
-  value: "turn.example.com"
-- name: SELKIES_TURN_PORT
-  value: "3478"
-- name: SELKIES_TURN_USERNAME
-  value: "username"
-- name: SELKIES_TURN_PASSWORD
-  valueFrom:
-    secretKeyRef:
-      name: turn-password
-      key: turn-password
-- name: SELKIES_TURN_PROTOCOL
-  value: "udp"
-- name: SELKIES_TURN_TLS
-  value: "false"
+### Display Settings
+
+```bash
+# Resolution
+DISPLAY_WIDTH=1920        # Width in pixels
+DISPLAY_HEIGHT=1080       # Height in pixels
+DISPLAY_REFRESH=60        # Refresh rate in Hz
+DISPLAY_DPI=96            # DPI setting
+
+./start-container.sh all
 ```
 
-> NOTE: It is possible to skip the first step and directly provide the TURN password with `value:`, but this exposes the TURN password in plain text. Set `SELKIES_TURN_PROTOCOL` to `tcp` if you were able to only open TCP ports while creating your own coTURN Deployment/DaemonSet, or if your client network throttles or blocks the UDP protocol at the cost of higher latency and lower performance.
+### Video Encoding
 
-</details>
+```bash
+# NVIDIA GPU (hardware encoding)
+VIDEO_ENCODER=nvh264enc   # H.264 with NVIDIA
+VIDEO_BITRATE=8000        # kbps
+FRAMERATE=60              # FPS
+
+# Software encoding (no GPU)
+VIDEO_ENCODER=x264enc     # H.264 software
+VIDEO_BITRATE=4000        # Lower bitrate for CPU
+
+./start-container.sh all
+```
+
+**Available encoders:**
+
+- `nvh264enc` - NVIDIA H.264 (requires NVIDIA GPU)
+- `x264enc` - Software H.264 (CPU)
+- `vp8enc` - Software VP8
+- `vp9enc` - Software VP9
+- `vah264enc` - AMD/Intel hardware encoding
+
+### Audio Settings
+
+```bash
+AUDIO_BITRATE=128000      # Audio bitrate in bps (default: 128000)
+./start-container.sh all
+```
+
+### Display Mode
+
+**Selkies GStreamer (Default):**
+
+- WebRTC-based streaming
+- Low latency, high performance
+- Better for gaming and graphics
+
+```bash
+./start-container.sh all          # Uses Selkies by default
+```
+
+**KasmVNC:**
+
+- VNC-based streaming over WebSocket
+- Better compatibility
+- Works without GPU
+
+```bash
+./start-container.sh all vnc      # Activates KasmVNC mode
+```
+
+---
+
+## HTTPS/SSL
+
+### Quick Setup with Auto-Generation
+
+```bash
+# 1. Generate SSL certificate (interactive)
+./generate-ssl-cert.sh
+
+# 2. Start container (auto-detects ssl/ folder)
+./start-container.sh all
+```
+
+The script will:
+
+- Generate a self-signed certificate
+- Save to `ssl/` folder by default
+- Provide usage examples
+
+Access via: <https://localhost:8080> (your browser will show a security warning)
+
+### Certificate Priority
+
+The `start-container.sh` script auto-detects certificates in this order:
+
+1. `ssl/cert.pem` and `ssl/key.pem` (from generate-ssl-cert.sh)
+2. Environment variables `CERT_PATH` and `KEY_PATH`
+3. Runs without HTTPS if no certificates found
+
+### Using Custom SSL Certificates
+
+```bash
+CERT_PATH=/path/to/cert.pem \
+  KEY_PATH=/path/to/key.pem \
+  ./start-container.sh all
+```
+
+### Manual Certificate Generation
+
+```bash
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout key.pem -out cert.pem \
+  -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
+```
+
+For production, use certificates from [Let's Encrypt](https://letsencrypt.org/).
+
+---
 
 ## Troubleshooting
 
-### I have an issue related to the Selkies WebRTC HTML5 interface.
+### Container Won't Start
 
-**[Link](https://github.com/selkies-project/selkies/blob/main/docs/README.md)**
+```bash
+# Check logs
+./logs-container.sh
 
-### I want to customize this container.
+# Check if image exists
+docker images | grep devcontainer-ubuntu24.04-egl-desktop-base
 
-**[Link](https://github.com/selkies-project/selkies/blob/main/docs/development.md)**
+# Rebuild user image
+./build-user-image.sh
 
-### I want to use the keyboard layout of my own language.
+# Check if port is in use
+sudo netstat -tulpn | grep 8080
 
-<details markdown>
-  <summary>Open Answer</summary>
-
-Run `Input Method: Configure Input Method` from the start menu, uncheck `Only Show Current Language`, search and add from available input methods (Hangul, Mozc, Pinyin, and others) by moving to the right, then use `Ctrl + Space` to switch between the input methods. Raise an issue if you need more layouts.
-
-</details>
-
-### The container does not work.
-
-<details markdown>
-  <summary>Open Answer</summary>
-
-Check that the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) is properly configured in the host. Next, check that your host NVIDIA GPU driver is not the `nvidia-headless` variant, which lacks the required display and graphics capabilities for this container.
-
-After that, check the environment variable `NVIDIA_DRIVER_CAPABILITIES` after starting a shell interface inside the container. `NVIDIA_DRIVER_CAPABILITIES` should be set to `all`, or include a comma-separated list of `compute` (requirement for CUDA and OpenCL, or for the [Selkies](https://github.com/selkies-project/selkies) WebRTC remote desktop interface), `utility` (requirement for `nvidia-smi` and NVML), `graphics` (requirement for OpenGL and part of the requirement for Vulkan), `video` (required for encoding or decoding videos using NVIDIA GPUs, or for the [Selkies](https://github.com/selkies-project/selkies) WebRTC remote desktop interface), `display` (the other requirement for Vulkan), and optionally `compat32` if you use Wine or 32-bit graphics applications.
-
-Moreover, if you are using custom configurations, check if your shared memory path `/dev/shm` has sufficient capacity, where expanding the capacity is done by adding `--tmpfs /dev/shm:rw` to your Docker command or adding the below lines to your Kubernetes configuration file.
-
-```yaml
-spec:
-  template:
-    spec:
-      containers:
-        volumeMounts:
-        - mountPath: /dev/shm
-          name: dshm
-      volumes:
-      - name: dshm
-        emptyDir:
-          medium: Memory
+# Use a different port
+HTTPS_PORT=8081 ./start-container.sh all
 ```
 
-If you checked everything here, scroll down.
+### GPU Not Detected
 
-</details>
+```bash
+# Check NVIDIA driver
+nvidia-smi
 
-### I want to use `systemd`, `polkit`, FUSE mounts, or sandboxed (containerized) application distribution systems like Flatpak, Snapcraft (snap), AppImage, Electron, chrome-sandbox, etc.
+# Check Docker can access GPU
+docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
 
-<details markdown>
-  <summary>Open Answer</summary>
+# Use software rendering if GPU issues persist
+./start-container.sh none
+```
 
-**Use the option `--appimage-extract-and-run` or `--appimage-extract` with your AppImage to run them in a container. Alternatively, set `export APPIMAGE_EXTRACT_AND_RUN=1` to your current shell.**
+### Permission Issues
 
-Do not use `systemd`, `polkit`, FUSE mounts, or sandboxed application distribution systems with containers. You can use them if you add unsafe capabilities to your containers, but it will break the isolation of the containers. This is especially bad if you are using Kubernetes. There will likely be an alternative way to install the applications instead of Snapcraft (snap) or Flatpak, including [Personal Package Archives](https://launchpad.net/ubuntu/+ppas). For some applications, there will be options to disable sandboxing when running or options to extract files before running. When applications using Chrome Sandbox (chrome-sandbox) or the [Electron](https://www.electronjs.org/) framework show related errors, use the `--no-sandbox` command-line option when running such applications.
+```bash
+# Access as root
+AS_ROOT=true ./shell-container.sh
 
-</details>
+# Check user ID matches
+id  # on host
+./shell-container.sh  # then run 'id' inside container
 
-### OpenGL does not work for certain applications.
+# If UID/GID mismatch, rebuild user image
+./delete-image.sh
+./build-user-image.sh
+```
 
-<details markdown>
-  <summary>Open Answer</summary>
+### Cannot Access Web Interface
 
-This is likely an issue with [VirtualGL](https://github.com/VirtualGL/virtualgl), which is used to translate GLX commands to EGL commands and use OpenGL without Xorg. Some applications, including research workloads, show this problem. This **cannot** be solved by raising an issue here or contacting me.
+```bash
+# Check container is running
+docker ps
 
-First, check that the application works with [docker-selkies-glx-desktop](https://github.com/selkies-project/docker-selkies-glx-desktop) in the same host environment. If it works, it is indeed a problem associated with [VirtualGL](https://github.com/VirtualGL/virtualgl). If it does not, raise an issue here. Second, use the error messages found with verbose mode and search similar issues for your application. Third, if there are no similar issues, raise the issue to the repository or contact the maintainers. Fourth, if the maintainers request that it should be redirected to [VirtualGL](https://github.com/VirtualGL/virtualgl), raise an issue there after confirming [VirtualGL](https://github.com/VirtualGL/virtualgl) does not have similar issues raised. Note that in this case, you may have to wait for a new [VirtualGL](https://github.com/VirtualGL/virtualgl) release and for this repository to use the new release.
+# Check nginx is running
+./shell-container.sh
+# Inside container: supervisorctl status
 
-</details>
+# Check firewall
+sudo ufw status
+sudo ufw allow 8080/tcp
+```
 
-### Vulkan does not work.
+### Services Not Starting
 
-<details markdown>
-  <summary>Open Answer</summary>
+```bash
+# Check all services
+./shell-container.sh
+supervisorctl status
 
-Make sure that the `NVIDIA_DRIVER_CAPABILITIES` environment variable is set to `all`, or includes both `graphics` and `display`. The `display` capability is especially crucial to Vulkan, but the container does start without noticeable issues other than Vulkan without `display`, despite its name. AMD and Intel GPUs are not tested and therefore Vulkan is not guaranteed to work. People are welcome to share their experiences, however.
+# Restart a specific service
+./shell-container.sh
+supervisorctl restart nginx
 
-</details>
+# Check service logs
+./logs-container.sh
+```
 
-### I want to use a specific GPU for OpenGL rendering when I have multiple GPUs in one container.
+### UID/GID Conflicts
 
-<details markdown>
-  <summary>Open Answer</summary>
+If you get permission errors with mounted volumes:
 
-Use the `VGL_DISPLAY` environment variable, but only do so after you understand what it implicates with [VirtualGL](https://github.com/VirtualGL/virtualgl). Valid values are either `egl[n]`, or `/dev/dri/card[n]` only when `--device=/dev/dri` was used for the container (`[n]` is the order of the GPUs, where simply `egl` without the number is the same as `egl0`). Note that `docker --gpus 1` means any single GPU, not the GPU device ID of 1. Use `docker --gpus '"device=1,2"'` to provision GPUs with device IDs 1 and 2 to the container.
+1. Check your host UID/GID: `id -u` and `id -g`
+2. Verify the image was built with the correct UID/GID
+3. Rebuild the user image if necessary:
 
-</details>
+```bash
+./delete-image.sh
+./build-user-image.sh
+```
+
+### Rebuilding Images
+
+```bash
+# Rebuild user image without cache
+NO_CACHE=true ./build-user-image.sh
+
+# Pull latest base image
+docker pull devcontainer-ubuntu24.04-egl-desktop-base:latest
+./build-user-image.sh
+```
 
 ---
-This project has been developed and is supported in part by the National Research Platform (NRP) and the Cognitive Hardware and Software Ecosystem Community Infrastructure (CHASE-CI) at the University of California, San Diego, by funding from the National Science Foundation (NSF), with awards #1730158, #1540112, #1541349, #1826967, #2138811, #2112167, #2100237, and #2120019, as well as additional funding from community partners, infrastructure utilization from the Open Science Grid Consortium, supported by the National Science Foundation (NSF) awards #1836650 and #2030508, and infrastructure utilization from the Chameleon testbed, supported by the National Science Foundation (NSF) awards #1419152, #1743354, and #2027170. This project has also been funded by the Seok-San Yonsei Medical Scientist Training Program (MSTP) Song Yong-Sang Scholarship, College of Medicine, Yonsei University, the MD-PhD/Medical Scientist Training Program (MSTP) through the Korea Health Industry Development Institute (KHIDI), funded by the Ministry of Health & Welfare, Republic of Korea, and the Student Research Bursary of Song-dang Institute for Cancer Research, College of Medicine, Yonsei University.
+
+## Advanced Topics
+
+### Docker Compose
+
+If you prefer docker-compose:
+
+```bash
+# Start
+USER_IMAGE=devcontainer-ubuntu24.04-egl-desktop-base:$(whoami) \
+  docker-compose -f docker-compose.user.yml up -d
+
+# Stop
+docker-compose -f docker-compose.user.yml down
+```
+
+### Environment Variables Reference
+
+<details>
+<summary>Click to expand full environment variables list</summary>
+
+#### Container Settings
+
+- `CONTAINER_NAME` - Container name (default: `devcontainer-egl-desktop-$(whoami)`)
+- `IMAGE_NAME` - Image to use (default: `devcontainer-ubuntu24.04-egl-desktop-base:$(whoami)`)
+- `DETACHED` - Run in background (default: `true`)
+
+#### Display
+
+- `DISPLAY_WIDTH` - Width in pixels (default: `1920`)
+- `DISPLAY_HEIGHT` - Height in pixels (default: `1080`)
+- `DISPLAY_REFRESH` - Refresh rate in Hz (default: `60`)
+- `DISPLAY_DPI` - DPI setting (default: `96`)
+
+#### Authentication
+
+- Password is set during image build (no runtime configuration needed)
+- `SELKIES_BASIC_AUTH_PASSWORD` - Web interface password (can be set at runtime if needed)
+
+#### Video
+
+- `VIDEO_ENCODER` - Video encoder (default: `nvh264enc`)
+- `VIDEO_BITRATE` - Video bitrate in kbps (default: `8000`)
+- `FRAMERATE` - Frame rate (default: `60`)
+
+#### Audio
+
+- `AUDIO_BITRATE` - Audio bitrate in bps (default: `128000`)
+
+#### HTTPS/SSL
+
+- `ENABLE_HTTPS` - Enable HTTPS (default: auto-detected from ssl/ folder)
+- `SELKIES_HTTPS_CERT` - Path to SSL certificate (inside container)
+- `SELKIES_HTTPS_KEY` - Path to SSL private key (inside container)
+- `CERT_PATH` - Host path to certificate file (for mounting)
+- `KEY_PATH` - Host path to key file (for mounting)
+
+#### GPU
+
+- GPU selection is via command argument: `all`, `none`, or device numbers
+- `ENABLE_NVIDIA` - Deprecated, use command argument instead
+
+#### Network
+
+- `HTTPS_PORT` - Host port to bind (default: `8080`)
+
+</details>
+
+### GPU Support
+
+**NVIDIA GPUs:**
+
+- Requires driver version 450.80.02 or later
+- Maxwell generation or newer
+- NVENC support for hardware encoding
+
+**AMD/Intel GPUs:**
+
+```bash
+VIDEO_ENCODER=vah264enc ./start-container.sh none
+```
+
+**Software Rendering (No GPU):**
+
+```bash
+VIDEO_ENCODER=x264enc ./start-container.sh none
+```
+
+### Wine and Gaming
+
+Wine, Winetricks, Lutris, and other gaming tools are pre-installed. You can run Windows applications and games directly.
+
+### Mounting Additional Volumes
+
+Edit `start-container.sh` and add volume mounts:
+
+```bash
+CMD="${CMD} -v /path/on/host:/path/in/container"
+```
+
+### Multiple Users on Same Host
+
+Each user should build their own image:
+
+```bash
+# User 1
+USER_PASSWORD=user1pass ./build-user-image.sh
+
+# User 2 (on same machine)
+USER_PASSWORD=user2pass ./build-user-image.sh
+```
+
+Each will get their own tagged image matching their username and UID/GID.
+
+Container names automatically include username: `devcontainer-egl-desktop-{username}`
+
+---
+
+## Project Structure
+
+```
+docker-selkies-egl-desktop/
+├── build-user-image.sh           # Build user-specific image
+├── start-container.sh             # Start container
+├── stop-container.sh              # Stop container
+├── restart-container.sh           # Restart container
+├── logs-container.sh              # View logs
+├── shell-container.sh             # Access shell
+├── delete-image.sh                # Delete user image
+├── commit-container.sh            # Save changes
+├── generate-ssl-cert.sh           # Generate SSL certificate
+├── docker-compose.yml             # Docker Compose config (base image)
+├── docker-compose.user.yml        # Docker Compose config (user image)
+├── egl.yml                        # Alternative compose config
+├── ssl/                           # SSL certificates (auto-detected)
+│   ├── cert.pem
+│   └── key.pem
+└── files/                         # System files
+    ├── Dockerfile.base            # Base image definition
+    ├── Dockerfile.user            # User image definition
+    ├── entrypoint.sh              # Container entrypoint
+    ├── kasmvnc-entrypoint.sh      # KasmVNC setup
+    ├── selkies-gstreamer-entrypoint.sh  # Selkies setup
+    ├── supervisord.conf           # Supervisor config
+    └── build-base-image.sh        # Base image builder (for maintainers)
+```
+
+---
+
+## Version Pinning
+
+External dependencies are pinned to specific versions for reproducible builds:
+
+- **VirtualGL:** 3.1.4
+- **KasmVNC:** 1.4.0
+- **Selkies GStreamer:** 1.6.2
+- **NVIDIA VAAPI Driver:** 0.0.14
+- **RustDesk:** 1.4.4
+
+These are defined in [files/Dockerfile.base](files/Dockerfile.base) as build arguments.
+
+---
+
+## Building Base Image (For Maintainers)
+
+If you need to build the base image (usually only for project maintainers):
+
+```bash
+cd files
+./build-base-image.sh
+```
+
+Or manually:
+
+```bash
+docker build \
+    -f files/Dockerfile.base \
+    -t devcontainer-ubuntu24.04-egl-desktop-base:latest \
+    .
+```
+
+The base image build takes 30-60 minutes and requires:
+
+- Fast internet connection (downloads ~5-10 GB)
+- 20+ GB free disk space
+- Docker with BuildKit enabled
+
+---
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
+
+For base image changes, test thoroughly and update version numbers as needed.
+
+---
+
+## License
+
+Mozilla Public License 2.0
+
+See [LICENSE](LICENSE) file for details.
+
+---
+
+## Related Projects
+
+- [docker-selkies-glx-desktop](https://github.com/selkies-project/docker-selkies-glx-desktop) - Better performance with dedicated X11 server
+- [Selkies GStreamer](https://github.com/selkies-project/selkies-gstreamer) - WebRTC streaming component
+- [KasmVNC](https://github.com/kasmtech/KasmVNC) - VNC server with web interface
+
+---
+
+## Credits
+
+### Original Project
+
+- **Selkies Project:** [github.com/selkies-project](https://github.com/selkies-project)
+- **Original Maintainers:** [@ehfd](https://github.com/ehfd), [@danisla](https://github.com/danisla)
+- **Original Repository:** [docker-selkies-egl-desktop](https://github.com/selkies-project/docker-selkies-egl-desktop)
+
+### This Fork
+
+- **Enhancements:** Two-stage build system, non-root execution, UID/GID matching, secure password management, management scripts, SSL automation, version pinning, multi-user support
+- **Maintainer:** [@tatsuyai713](https://github.com/tatsuyai713)

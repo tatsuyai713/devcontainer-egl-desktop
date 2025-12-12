@@ -1,0 +1,213 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# User-specific image built from base image
+ARG BASE_IMAGE=ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04
+FROM ${BASE_IMAGE}
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# User configuration parameters
+ARG USER_NAME=user
+ARG USER_UID=1000
+ARG USER_GID=1000
+ARG USER_PASSWORD=mypasswd
+
+# Locale configuration parameters
+ARG IN_LOCALE=US
+ARG IN_TZ=UTC
+ARG IN_LANG=en_US.UTF-8
+ARG IN_LANGUAGE=en_US:en
+
+LABEL maintainer="https://github.com/tatsuyai713"
+
+# Create user and configure sudo
+RUN groupadd -g ${USER_GID} ${USER_NAME} && \
+    useradd -m -s /bin/bash -u ${USER_UID} -g ${USER_GID} ${USER_NAME} && \
+    usermod -a -G adm,audio,cdrom,dialout,dip,fax,floppy,games,input,lp,plugdev,render,ssl-cert,sudo,tape,tty,video,voice ${USER_NAME} && \
+    echo "${USER_NAME} ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers && \
+    echo "${USER_NAME}:${USER_PASSWORD}" | chpasswd
+
+# Configure RIKEN mirror repository for faster downloads in Japan (JP locale only)
+RUN if [ "${IN_LOCALE}" = "JP" ]; then \
+    if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then \
+        sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ftp.riken.jp/Linux/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's|http://security.ubuntu.com/ubuntu/|http://ftp.riken.jp/Linux/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources; \
+    elif [ -f /etc/apt/sources.list ]; then \
+        sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ftp.riken.jp/Linux/ubuntu/|g' /etc/apt/sources.list && \
+        sed -i 's|http://security.ubuntu.com/ubuntu/|http://ftp.riken.jp/Linux/ubuntu/|g' /etc/apt/sources.list; \
+    fi; \
+    fi
+
+# Install Japanese language support if IN_LOCALE is JP
+RUN if [ "${IN_LOCALE}" = "JP" ]; then \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        language-pack-ja-base \
+        language-pack-ja \
+        fcitx-mozc \
+        fcitx-libs-dev \
+        fcitx-module-dbus \
+        kde-config-fcitx \
+        fcitx \
+        fcitx-frontend-gtk2 \
+        fcitx-frontend-gtk3 \
+        fcitx-frontend-qt5 \
+        fcitx-ui-classic \
+        mozc-utils-gui && \
+    rm -rf /var/lib/apt/lists/* && \
+    locale-gen ja_JP.UTF-8 && \
+    dbus-launch --sh-syntax --exit-with-session > /dev/null || true; \
+    fi
+
+# Set locale environment variables
+ENV TZ=${IN_TZ}
+ENV LANG=${IN_LANG}
+ENV LANGUAGE=${IN_LANGUAGE}
+
+# Set timezone
+RUN ln -snf "/usr/share/zoneinfo/${IN_TZ}" /etc/localtime && echo "${IN_TZ}" > /etc/timezone
+
+# Configure NGINX to use user-writable config location as fallback
+# Create a script to handle NGINX config from user location
+RUN echo '#!/bin/bash\n\
+# Check if user config exists and system config is writable\n\
+USER_CONFIG="${XDG_RUNTIME_DIR}/nginx/default.conf"\n\
+SYSTEM_CONFIG="/etc/nginx/sites-available/default"\n\
+if [ -f "${USER_CONFIG}" ] && [ -w "${SYSTEM_CONFIG}" ]; then\n\
+  cp "${USER_CONFIG}" "${SYSTEM_CONFIG}"\n\
+  echo "Loaded NGINX config from user location"\n\
+fi\n\
+exec /usr/sbin/nginx "$@"\n\
+' > /usr/local/bin/nginx-wrapper.sh && chmod 755 /usr/local/bin/nginx-wrapper.sh
+
+# Make system directories writable where needed for runtime operations
+RUN mkdir -p /opt/gstreamer/lib && \
+    chmod 777 /opt/gstreamer/lib 2>/dev/null || true
+
+# Set user-specific runtime directory
+ENV XDG_RUNTIME_DIR=/tmp/runtime-${USER_NAME}
+ENV PIPEWIRE_RUNTIME_DIR="${XDG_RUNTIME_DIR}"
+ENV PULSE_RUNTIME_PATH="${XDG_RUNTIME_DIR}/pulse"
+ENV PULSE_SERVER="unix:${XDG_RUNTIME_DIR}/pulse/native"
+ENV DBUS_SYSTEM_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/dbus-system-bus"
+
+# Create user runtime directory
+RUN mkdir -p /tmp/runtime-${USER_NAME} && \
+    chown ${USER_UID}:${USER_GID} /tmp/runtime-${USER_NAME} && \
+    chmod 700 /tmp/runtime-${USER_NAME}
+
+# Configure bash environment with Ubuntu Desktop standard settings
+RUN echo '# ~/.bashrc: executed by bash(1) for non-login shells.\n\
+\n\
+# If not running interactively, don'\''t do anything\n\
+case $- in\n\
+    *i*) ;;\n\
+      *) return;;\n\
+esac\n\
+\n\
+# don'\''t put duplicate lines or lines starting with space in the history.\n\
+HISTCONTROL=ignoreboth\n\
+\n\
+# append to the history file, don'\''t overwrite it\n\
+shopt -s histappend\n\
+\n\
+# for setting history length see HISTSIZE and HISTFILESIZE in bash(1)\n\
+HISTSIZE=1000\n\
+HISTFILESIZE=2000\n\
+\n\
+# check the window size after each command and, if necessary,\n\
+# update the values of LINES and COLUMNS.\n\
+shopt -s checkwinsize\n\
+\n\
+# make less more friendly for non-text input files, see lesspipe(1)\n\
+[ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"\n\
+\n\
+# set variable identifying the chroot you work in (used in the prompt below)\n\
+if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then\n\
+    debian_chroot=$(cat /etc/debian_chroot)\n\
+fi\n\
+\n\
+# set a fancy prompt (non-color, unless we know we "want" color)\n\
+case "$TERM" in\n\
+    xterm-color|*-256color) color_prompt=yes;;\n\
+esac\n\
+\n\
+# uncomment for a colored prompt, if the terminal has the capability; turned\n\
+# off by default to not distract the user: the focus in a terminal window\n\
+# should be on the output of commands, not on the prompt\n\
+force_color_prompt=yes\n\
+\n\
+if [ -n "$force_color_prompt" ]; then\n\
+    if [ -x /usr/bin/tput ] && tput setaf 1 >&/dev/null; then\n\
+        color_prompt=yes\n\
+    else\n\
+        color_prompt=\n\
+    fi\n\
+fi\n\
+\n\
+if [ "$color_prompt" = yes ]; then\n\
+    PS1='\''${debian_chroot:+($debian_chroot)}\\[\\033[01;32m\\]\\u@\\h\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ '\''\n\
+else\n\
+    PS1='\''${debian_chroot:+($debian_chroot)}\\u@\\h:\\w\\$ '\''\n\
+fi\n\
+unset color_prompt force_color_prompt\n\
+\n\
+# If this is an xterm set the title to user@host:dir\n\
+case "$TERM" in\n\
+xterm*|rxvt*)\n\
+    PS1="\\[\\e]0;${debian_chroot:+($debian_chroot)}\\u@\\h: \\w\\a\\]$PS1"\n\
+    ;;\n\
+*)\n\
+    ;;\n\
+esac\n\
+\n\
+# enable color support of ls and also add handy aliases\n\
+if [ -x /usr/bin/dircolors ]; then\n\
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"\n\
+    alias ls='\''ls --color=auto'\''\n\
+    alias grep='\''grep --color=auto'\''\n\
+    alias fgrep='\''fgrep --color=auto'\''\n\
+    alias egrep='\''egrep --color=auto'\''\n\
+fi\n\
+\n\
+# colored GCC warnings and errors\n\
+export GCC_COLORS='\''error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'\''\n\
+\n\
+# some more ls aliases\n\
+alias ll='\''ls -alF'\''\n\
+alias la='\''ls -A'\''\n\
+alias l='\''ls -CF'\''\n\
+\n\
+# Alias definitions.\n\
+if [ -f ~/.bash_aliases ]; then\n\
+    . ~/.bash_aliases\n\
+fi\n\
+\n\
+# enable programmable completion features\n\
+if ! shopt -oq posix; then\n\
+  if [ -f /usr/share/bash-completion/bash_completion ]; then\n\
+    . /usr/share/bash-completion/bash_completion\n\
+  elif [ -f /etc/bash_completion ]; then\n\
+    . /etc/bash_completion\n\
+  fi\n\
+fi\n\
+' > /home/${USER_NAME}/.bashrc && \
+    chown ${USER_UID}:${USER_GID} /home/${USER_NAME}/.bashrc
+
+# Switch to user (use username to enable supplementary groups like ssl-cert)
+USER ${USER_NAME}
+
+# Set user environment variables
+ENV SHELL=/bin/bash
+ENV USER=${USER_NAME}
+ENV HOME=/home/${USER_NAME}
+WORKDIR /home/${USER_NAME}
+
+# Store password as environment variable
+ENV PASSWD=${USER_PASSWORD}
+
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/bin/supervisord"]

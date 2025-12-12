@@ -10,14 +10,15 @@ trap "echo TRAPed signal" HUP INT QUIT TERM
 
 # Wait for XDG_RUNTIME_DIR
 until [ -d "${XDG_RUNTIME_DIR}" ]; do sleep 0.5; done
-# Make user directory owned by the default user
-chown -f "$(id -nu):$(id -ng)" ~ || sudo-root chown -f "$(id -nu):$(id -ng)" ~ || chown -R -f -h --no-preserve-root "$(id -nu):$(id -ng)" ~ || sudo-root chown -R -f -h --no-preserve-root "$(id -nu):$(id -ng)" ~ || echo 'Failed to change user directory permissions, there may be permission issues'
-# Change operating system password to environment variable
-(echo "${PASSWD}"; echo "${PASSWD}";) | sudo passwd "$(id -nu)" || (echo "mypasswd"; echo "${PASSWD}"; echo "${PASSWD}";) | passwd "$(id -nu)" || echo 'Password change failed, using default password'
+# Change operating system password to environment variable (requires sudo)
+if command -v sudo >/dev/null 2>&1; then
+  (echo "${PASSWD}"; echo "${PASSWD}";) | sudo passwd "$(id -nu)" 2>/dev/null || echo 'Password change requires root privileges, skipping'
+else
+  echo 'Password change requires root privileges, skipping'
+fi
 # Remove directories to make sure the desktop environment starts
-rm -rf /tmp/.X* ~/.cache || echo 'Failed to clean X11 paths'
-# Change time zone from environment variable
-ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime && echo "${TZ}" | tee /etc/timezone > /dev/null || echo 'Failed to set timezone'
+rm -rf /tmp/.X* ~/.cache 2>/dev/null || echo 'Failed to clean X11 paths'
+# Timezone should be set at container build time or via volume mount
 # Add Lutris directories to path
 export PATH="${PATH:+${PATH}:}/usr/local/games:/usr/games"
 # Add LibreOffice to library path
@@ -26,10 +27,12 @@ export LD_LIBRARY_PATH="/usr/lib/libreoffice/program${LD_LIBRARY_PATH:+:${LD_LIB
 # Configure joystick interposer
 export SELKIES_INTERPOSER='/usr/$LIB/selkies_joystick_interposer.so'
 export LD_PRELOAD="${SELKIES_INTERPOSER}${LD_PRELOAD:+:${LD_PRELOAD}}"
-export SDL_JOYSTICK_DEVICE=/dev/input/js0
-mkdir -pm1777 /dev/input || sudo-root mkdir -pm1777 /dev/input || echo 'Failed to create joystick interposer directory'
-touch /dev/input/js0 /dev/input/js1 /dev/input/js2 /dev/input/js3 || sudo-root touch /dev/input/js0 /dev/input/js1 /dev/input/js2 /dev/input/js3 || echo 'Failed to create joystick interposer devices'
-chmod 777 /dev/input/js* || sudo-root chmod 777 /dev/input/js* || echo 'Failed to change permission for joystick interposer devices'
+export SDL_JOYSTICK_DEVICE="${XDG_RUNTIME_DIR}/js0"
+# Create joystick devices in user-writable location
+mkdir -p "${XDG_RUNTIME_DIR}" 2>/dev/null || true
+for i in 0 1 2 3; do
+  touch "${XDG_RUNTIME_DIR}/js${i}" 2>/dev/null || true
+done
 
 # Set default display
 export DISPLAY="${DISPLAY:-:20}"
@@ -40,7 +43,10 @@ export PIPEWIRE_RUNTIME_DIR="${PIPEWIRE_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-/tmp}}"
 export PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-${XDG_RUNTIME_DIR:-/tmp}/pulse}"
 export PULSE_SERVER="${PULSE_SERVER:-unix:${PULSE_RUNTIME_PATH:-${XDG_RUNTIME_DIR:-/tmp}/pulse}/native}"
 
-if [ -z "$(ldconfig -N -v $(sed 's/:/ /g' <<< $LD_LIBRARY_PATH) 2>/dev/null | grep 'libEGL_nvidia.so.0')" ] || [ -z "$(ldconfig -N -v $(sed 's/:/ /g' <<< $LD_LIBRARY_PATH) 2>/dev/null | grep 'libGLX_nvidia.so.0')" ]; then
+# Check if NVIDIA support is enabled (default: true for backward compatibility)
+export ENABLE_NVIDIA="${ENABLE_NVIDIA:-true}"
+
+if [ "$(echo ${ENABLE_NVIDIA} | tr '[:upper:]' '[:lower:]')" = "true" ] && { [ -z "$(ldconfig -N -v $(sed 's/:/ /g' <<< $LD_LIBRARY_PATH) 2>/dev/null | grep 'libEGL_nvidia.so.0')" ] || [ -z "$(ldconfig -N -v $(sed 's/:/ /g' <<< $LD_LIBRARY_PATH) 2>/dev/null | grep 'libGLX_nvidia.so.0')" ]; }; then
   # Install NVIDIA userspace driver components including X graphic libraries, keep contents same between docker-selkies-glx-desktop and docker-selkies-egl-desktop
   export NVIDIA_DRIVER_ARCH="$(dpkg --print-architecture | sed -e 's/arm64/aarch64/' -e 's/armhf/32bit-ARM/' -e 's/i.*86/x86/' -e 's/amd64/x86_64/' -e 's/unknown/x86_64/')"
   if [ -z "${NVIDIA_DRIVER_VERSION}" ]; then
@@ -66,19 +72,25 @@ if [ -z "$(ldconfig -N -v $(sed 's/:/ /g' <<< $LD_LIBRARY_PATH) 2>/dev/null | gr
     sh "NVIDIA-Linux-${NVIDIA_DRIVER_ARCH}-${NVIDIA_DRIVER_VERSION}.run" -x
     cd "NVIDIA-Linux-${NVIDIA_DRIVER_ARCH}-${NVIDIA_DRIVER_VERSION}"
     # Run NVIDIA driver installation without the kernel modules and host components
-    sudo ./nvidia-installer --silent \
-                      --no-kernel-module \
-                      --install-compat32-libs \
-                      --no-nouveau-check \
-                      --no-nvidia-modprobe \
-                      --no-systemd \
-                      --no-rpms \
-                      --no-backup \
-                      --no-check-for-alternate-installs
+    if command -v sudo >/dev/null 2>&1; then
+      sudo ./nvidia-installer --silent \
+                        --no-kernel-module \
+                        --install-compat32-libs \
+                        --no-nouveau-check \
+                        --no-nvidia-modprobe \
+                        --no-systemd \
+                        --no-rpms \
+                        --no-backup \
+                        --no-check-for-alternate-installs || echo 'NVIDIA driver installation requires root privileges'
+    else
+      echo 'NVIDIA driver installation requires sudo, skipping. Drivers should be pre-installed in base image.'
+    fi
     rm -rf /tmp/NVIDIA* && cd ~
   else
-    echo 'Unless using non-NVIDIA GPUs, container will likely not work correctly'
+    echo 'NVIDIA driver installation file not found. If using NVIDIA GPUs, ensure drivers are pre-installed or mounted.'
   fi
+elif [ "$(echo ${ENABLE_NVIDIA} | tr '[:upper:]' '[:lower:]')" != "true" ]; then
+  echo 'NVIDIA support is disabled (ENABLE_NVIDIA=false). Using software rendering or other GPU vendors.'
 fi
 
 # Run Xvfb server with required extensions
@@ -93,10 +105,16 @@ echo 'Waiting for X Socket' && until [ -S "/tmp/.X11-unix/X${DISPLAY#*:}" ]; do 
 # Use VirtualGL to run the KDE desktop environment with OpenGL if the GPU is available, otherwise use OpenGL with llvmpipe
 export XDG_SESSION_ID="${DISPLAY#*:}"
 export QT_LOGGING_RULES="${QT_LOGGING_RULES:-*.debug=false;qt.qpa.*=false}"
-if [ -n "$(nvidia-smi --query-gpu=uuid --format=csv,noheader | head -n1)" ] || [ -n "$(ls -A /dev/dri 2>/dev/null)" ]; then
+if [ "$(echo ${ENABLE_NVIDIA} | tr '[:upper:]' '[:lower:]')" = "true" ] && [ -n "$(nvidia-smi --query-gpu=uuid --format=csv,noheader 2>/dev/null | head -n1)" ]; then
+  echo "Starting desktop with NVIDIA GPU acceleration via VirtualGL"
+  export VGL_FPS="${DISPLAY_REFRESH}"
+  /usr/bin/vglrun -d "${VGL_DISPLAY:-egl}" +wm /usr/bin/dbus-launch --exit-with-session /usr/bin/startplasma-x11 &
+elif [ -n "$(ls -A /dev/dri 2>/dev/null)" ]; then
+  echo "Starting desktop with GPU acceleration (non-NVIDIA)"
   export VGL_FPS="${DISPLAY_REFRESH}"
   /usr/bin/vglrun -d "${VGL_DISPLAY:-egl}" +wm /usr/bin/dbus-launch --exit-with-session /usr/bin/startplasma-x11 &
 else
+  echo "Starting desktop with software rendering (no GPU acceleration)"
   /usr/bin/dbus-launch --exit-with-session /usr/bin/startplasma-x11 &
 fi
 
