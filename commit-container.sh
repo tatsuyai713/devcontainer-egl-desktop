@@ -5,8 +5,8 @@ set -e
 
 CONTAINER_NAME="${CONTAINER_NAME:-devcontainer-egl-desktop-$(whoami)}"
 # Default tag without timestamp for easy reuse (can be overridden with COMMIT_TAG env var)
-COMMIT_TAG="${COMMIT_TAG:-24.04-$(whoami)}"
-BASE_IMAGE_NAME="${BASE_IMAGE_NAME:-devcontainer-ubuntu-egl-desktop}"
+COMMIT_TAG="${COMMIT_TAG:-24.04}"
+BASE_IMAGE_NAME="${BASE_IMAGE_NAME:-devcontainer-ubuntu-egl-desktop-$(whoami)}"
 RESTART="${1:-no}"  # Pass "restart" as first argument to auto-restart
 
 echo "========================================"
