@@ -28,8 +28,8 @@ fi
 # Configuration
 BASE_IMAGE_NAME="${BASE_IMAGE_NAME:-ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base}"
 BASE_IMAGE_TAG="${BASE_IMAGE_TAG:-24.04}"
-USER_IMAGE_NAME="${USER_IMAGE_NAME:-devcontainer-ubuntu-egl-desktop}"
-USER_IMAGE_TAG="${USER_IMAGE_TAG:-${BASE_IMAGE_TAG}-$(whoami)}"
+USER_IMAGE_NAME="${USER_IMAGE_NAME:-devcontainer-ubuntu-egl-desktop-$(whoami)}"
+USER_IMAGE_TAG="${USER_IMAGE_TAG:-${BASE_IMAGE_TAG}}"
 NO_CACHE="${NO_CACHE:-false}"
 
 # Get current user information

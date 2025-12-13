@@ -69,6 +69,7 @@ NVIDIA GPU用のOpenGL EGL/GLX、VulkanをWebRTCとHTML5でサポートするKub
   - `generate-ssl-cert.sh` - SSL証明書ジェネレーター
 
 - **👥 マルチユーザーサポート:** 各ユーザーが独立した環境を取得
+  - イメージ名にユーザー名を含む：`devcontainer-ubuntu-egl-desktop-{username}:24.04`
   - コンテナ名にユーザー名を含む：`devcontainer-egl-desktop-{username}`
   - 各ユーザーが自分のUID/GIDで独自のイメージをビルド
   - 同じホスト上の複数ユーザーで競合なし
@@ -285,7 +286,7 @@ docker build \
     --build-arg USER_GID=1001 \
     --build-arg USER_PASSWORD=johnspassword \
     -f files/Dockerfile.user \
-    -t devcontainer-ubuntu-egl-desktop:24.04-johndoe \
+    -t devcontainer-ubuntu-egl-desktop-johndoe:24.04 \
     .
 ```
 
@@ -458,7 +459,7 @@ AS_ROOT=true ./shell-container.sh
 COMMIT_TAG=my-setup ./commit-container.sh
 
 # 保存したイメージを使用
-IMAGE_NAME=devcontainer-ubuntu-egl-desktop:my-setup \
+IMAGE_NAME=devcontainer-ubuntu-egl-desktop-$(whoami):my-setup \
   CONTAINER_NAME=my-desktop-2 \
   ./start-container.sh all
 ```
@@ -466,7 +467,7 @@ IMAGE_NAME=devcontainer-ubuntu-egl-desktop:my-setup \
 **重要な注意事項：**
 
 - ⚠️ **`./stop-container.sh rm`の前に必ずコミット** - コミットせずに削除すると変更が失われる
-- ✅ イメージタグの形式は`24.04-{username}`（タイムスタンプなし）で簡単に再利用可能
+- ✅ イメージ名の形式は`devcontainer-ubuntu-egl-desktop-{username}:24.04`で簡単に再利用可能
 - ✅ コミットされたイメージはコンテナ削除後も保持される
 - ✅ 次回起動時にコミットされたイメージが自動的に使用される
 
@@ -832,7 +833,7 @@ docker-composeを希望する場合：
 
 ```bash
 # 起動
-USER_IMAGE=devcontainer-ubuntu-egl-desktop:24.04-$(whoami) \
+USER_IMAGE=devcontainer-ubuntu-egl-desktop-$(whoami):24.04 \
   docker-compose -f docker-compose.user.yml up -d
 
 # 停止
@@ -847,7 +848,7 @@ docker-compose -f docker-compose.user.yml down
 #### コンテナ設定
 
 - `CONTAINER_NAME` - コンテナ名（デフォルト：`devcontainer-egl-desktop-$(whoami)`）
-- `IMAGE_NAME` - 使用するイメージ（デフォルト：`devcontainer-ubuntu-egl-desktop:24.04-$(whoami)`）
+- `IMAGE_NAME` - 使用するイメージ（デフォルト：`devcontainer-ubuntu-egl-desktop-$(whoami):24.04`）
 - `DETACHED` - バックグラウンドで実行（デフォルト：`true`）
 
 #### ディスプレイ
@@ -931,9 +932,9 @@ USER_PASSWORD=user1pass ./build-user-image.sh
 USER_PASSWORD=user2pass ./build-user-image.sh
 ```
 
-各ユーザーはユーザー名とUID/GIDに一致する独自のタグ付きイメージを取得します。
-
-コンテナ名には自動的にユーザー名が含まれます：`devcontainer-egl-desktop-{username}`
+各ユーザーはユーザー名とUID/GIDに一致する独自のタグ付きイメージを取得します：
+- イメージ：`devcontainer-ubuntu-egl-desktop-{username}:24.04`
+- コンテナ：`devcontainer-egl-desktop-{username}`
 
 ---
 

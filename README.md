@@ -69,6 +69,7 @@ This repository is an enhanced fork of the original Selkies EGL Desktop project,
   - `generate-ssl-cert.sh` - SSL certificate generator
 
 - **👥 Multi-User Support:** Each user gets isolated environment
+  - Image names include username: `devcontainer-ubuntu-egl-desktop-{username}:24.04`
   - Container names include username: `devcontainer-egl-desktop-{username}`
   - Each user builds their own image with their UID/GID
   - No conflicts when multiple users on same host
@@ -285,7 +286,7 @@ docker build \
     --build-arg USER_GID=1001 \
     --build-arg USER_PASSWORD=johnspassword \
     -f files/Dockerfile.user \
-    -t devcontainer-ubuntu-egl-desktop:24.04-johndoe \
+    -t devcontainer-ubuntu-egl-desktop-johndoe:24.04 \
     .
 ```
 
@@ -458,7 +459,7 @@ If you've installed software or made changes in the container:
 COMMIT_TAG=my-setup ./commit-container.sh
 
 # Use the saved image
-IMAGE_NAME=devcontainer-ubuntu-egl-desktop:my-setup \
+IMAGE_NAME=devcontainer-ubuntu-egl-desktop-$(whoami):my-setup \
   CONTAINER_NAME=my-desktop-2 \
   ./start-container.sh all
 ```
@@ -466,7 +467,7 @@ IMAGE_NAME=devcontainer-ubuntu-egl-desktop:my-setup \
 **Important Notes:**
 
 - ⚠️ **Always commit before `./stop-container.sh rm`** - Changes are lost if you remove without committing
-- ✅ The image tag format is `24.04-{username}` (without timestamp) for easy reusability
+- ✅ The image name format is `devcontainer-ubuntu-egl-desktop-{username}:24.04` for easy reusability
 - ✅ Committed images persist even after container deletion
 - ✅ Next startup automatically uses the committed image
 
@@ -832,7 +833,7 @@ If you prefer docker-compose:
 
 ```bash
 # Start
-USER_IMAGE=devcontainer-ubuntu-egl-desktop:24.04-$(whoami) \
+USER_IMAGE=devcontainer-ubuntu-egl-desktop-$(whoami):24.04 \
   docker-compose -f docker-compose.user.yml up -d
 
 # Stop
@@ -847,7 +848,7 @@ docker-compose -f docker-compose.user.yml down
 #### Container Settings
 
 - `CONTAINER_NAME` - Container name (default: `devcontainer-egl-desktop-$(whoami)`)
-- `IMAGE_NAME` - Image to use (default: `devcontainer-ubuntu-egl-desktop:24.04-$(whoami)`)
+- `IMAGE_NAME` - Image to use (default: `devcontainer-ubuntu-egl-desktop-$(whoami):24.04`)
 - `DETACHED` - Run in background (default: `true`)
 
 #### Display
@@ -931,9 +932,9 @@ USER_PASSWORD=user1pass ./build-user-image.sh
 USER_PASSWORD=user2pass ./build-user-image.sh
 ```
 
-Each will get their own tagged image matching their username and UID/GID.
-
-Container names automatically include username: `devcontainer-egl-desktop-{username}`
+Each will get their own tagged image matching their username and UID/GID:
+- Image: `devcontainer-ubuntu-egl-desktop-{username}:24.04`
+- Container: `devcontainer-egl-desktop-{username}`
 
 ---
 
