@@ -4,7 +4,9 @@
 set -e
 
 # Default values
-GPU_ARG="none"
+GPU_VENDOR="none"   # one of: none, intel, amd, nvidia
+GPU_ALL="false"     # when vendor is nvidia, whether to use all GPUs
+GPU_NUMS=""         # when vendor is nvidia, specific device numbers (comma-separated)
 DISPLAY_MODE="selkies"
 ENABLE_TURN="true"
 
@@ -13,12 +15,13 @@ show_usage() {
     echo "Usage: $0 [options]"
     echo ""
     echo "Options:"
-    echo "  -g, --gpu <type>    GPU configuration (default: none)"
-    echo "                      all       - Use all available NVIDIA GPUs"
-    echo "                      none      - No GPU support (software rendering)"
-    echo "                      0,1,2...  - Use specific NVIDIA GPU(s) by device number"
+    echo "  --gpu <type>    GPU vendor (default: none)"
+    echo "                      nvidia    - NVIDIA (requires --all or --num)"
     echo "                      intel     - Use Intel integrated GPU"
     echo "                      amd       - Use AMD GPU"
+    echo "                      none      - No GPU support (software rendering)"
+    echo "  --all                Used with --gpu nvidia to select all NVIDIA GPUs"
+    echo "  --num <n[,m]>        Used with --gpu nvidia to select specific device numbers (comma-separated)"
     echo "  -v, --vnc           Use KasmVNC instead of Selkies GStreamer"
     echo "  -h, --help          Show this help message"
     echo ""
@@ -26,12 +29,13 @@ show_usage() {
     echo "      Ports are automatically assigned based on UID to avoid conflicts."
     echo ""
     echo "Examples:"
-    echo "  $0 --gpu all              # Use all NVIDIA GPUs with Selkies"
-    echo "  $0 -g intel               # Use Intel GPU with Selkies"
-    echo "  $0                        # Use software rendering (no GPU)"
-    echo "  $0 --gpu all --vnc        # Use all NVIDIA GPUs with KasmVNC"
-    echo "  $0 -g 0 -v                # Use NVIDIA GPU 0 with KasmVNC"
-    echo "  $0 -g intel -v            # Use Intel GPU with KasmVNC"
+    echo "  $0 --gpu nvidia --all             # Use all NVIDIA GPUs with Selkies"
+    echo "  $0 --gpu intel                     # Use Intel GPU with Selkies"
+    echo "  $0                                 # Use software rendering (no GPU)"
+    echo "  $0 --gpu nvidia --all --vnc        # Use all NVIDIA GPUs with KasmVNC"
+    echo "  $0 --gpu nvidia --num 0 --vnc      # Use NVIDIA GPU 0 with KasmVNC"
+    echo "  $0 --gpu intel --vnc               # Use Intel GPU with KasmVNC"
+    echo "  $0 --gpu nvidia --num 0,1 --vnc    # Use NVIDIA GPUs 0 and 1 with KasmVNC"
     echo ""
 }
 
@@ -39,8 +43,47 @@ show_usage() {
 while [[ $# -gt 0 ]]; do
     case $1 in
         -g|--gpu)
-            GPU_ARG="$2"
+            # Deprecation warning for short option
+            if [ "$1" = "-g" ]; then
+                echo "Warning: -g is deprecated; use --gpu instead."
+            fi
+            if [ -z "$2" ]; then
+                echo "Error: --gpu requires an argument (nvidia|intel|amd|none)"
+                exit 1
+            fi
+            # Disallow legacy 'all' here; require explicit vendor + --all/--num
+            if [ "${2}" = "all" ]; then
+                echo "Error: --gpu all is not allowed. Use --gpu nvidia --all instead."
+                exit 1
+            fi
+            if [[ "${2}" =~ ^[0-9] ]] || [[ "${2}" == *,* ]]; then
+                echo "Error: Specify device numbers with --num. Example: --gpu nvidia --num 0,1"
+                exit 1
+            fi
+            case "${2}" in
+                nvidia|intel|amd|none)
+                    GPU_VENDOR="${2}"
+                    ;;
+                *)
+                    echo "Error: Unknown GPU vendor: ${2}"
+                    exit 1
+                    ;;
+            esac
             shift 2
+            ;;
+        --num)
+            if [ -z "$2" ]; then
+                echo "Error: --num requires an argument (e.g. --num 0 or --num 0,1)"
+                exit 1
+            fi
+            # Accept --num regardless of order; validation performed after parsing
+            GPU_NUMS="$2"
+            shift 2
+            ;;
+        --all)
+            # Accept --all regardless of order; validation performed after parsing
+            GPU_ALL="true"
+            shift
             ;;
         -v|--vnc)
             DISPLAY_MODE="vnc"
@@ -58,6 +101,23 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Post-parse validation: ensure combinations are valid regardless of option order
+# If user provided --num or --all, they must be used with --gpu nvidia
+if [ -n "${GPU_NUMS}" ] || [ "${GPU_ALL}" = "true" ]; then
+    if [ "${GPU_VENDOR}" != "nvidia" ]; then
+        echo "Error: --all/--num options require --gpu nvidia. Example: --gpu nvidia --all or --gpu nvidia --num 0,1"
+        exit 1
+    fi
+fi
+
+# If vendor is nvidia, require either --all or --num
+if [ "${GPU_VENDOR}" = "nvidia" ]; then
+    if [ "${GPU_ALL}" != "true" ] && [ -z "${GPU_NUMS}" ]; then
+        echo "Error: --gpu nvidia requires either --all or --num. Example: --gpu nvidia --all or --gpu nvidia --num 0,1"
+        exit 1
+    fi
+fi
 
 # Configuration
 CONTAINER_NAME="${CONTAINER_NAME:-devcontainer-egl-desktop-$(whoami)}"
@@ -150,8 +210,15 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     
     # Build current command for display
     CURRENT_GPU_OPT=""
-    if [ "${GPU_ARG}" != "none" ]; then
-        CURRENT_GPU_OPT="--gpu ${GPU_ARG}"
+    if [ "${GPU_VENDOR}" != "none" ]; then
+        CURRENT_GPU_OPT="--gpu ${GPU_VENDOR}"
+        if [ "${GPU_VENDOR}" = "nvidia" ]; then
+            if [ "${GPU_ALL}" = "true" ]; then
+                CURRENT_GPU_OPT="${CURRENT_GPU_OPT} --all"
+            elif [ -n "${GPU_NUMS}" ]; then
+                CURRENT_GPU_OPT="${CURRENT_GPU_OPT} --num ${GPU_NUMS}"
+            fi
+        fi
     fi
     
     if [ "${DISPLAY_MODE}" = "vnc" ] && [ "${EXISTING_KASMVNC}" = "false" ]; then
@@ -212,7 +279,17 @@ echo "========================================"
 echo "Image: ${IMAGE_NAME}"
 echo "HTTPS: ${ENABLE_HTTPS}"
 echo "Port: ${HTTPS_PORT}"
-echo "GPU: ${GPU_ARG}"
+GPU_DESC="${GPU_VENDOR}"
+if [ "${GPU_VENDOR}" = "nvidia" ]; then
+    if [ "${GPU_ALL}" = "true" ]; then
+        GPU_DESC="${GPU_DESC} --all"
+    elif [ -n "${GPU_NUMS}" ]; then
+        GPU_DESC="${GPU_DESC} --num ${GPU_NUMS}"
+    else
+        GPU_DESC="${GPU_DESC} (no --all or --num specified)"
+    fi
+fi
+echo "GPU: ${GPU_DESC}"
 echo "Display: ${DISPLAY_MODE}"
 echo "========================================"
 
@@ -243,38 +320,43 @@ fi
 CMD="${CMD} --tmpfs /dev/shm:rw"
 CMD="${CMD} --hostname $(hostname)-Container"
 
-# GPU support based on argument
-if [ "${GPU_ARG}" = "none" ]; then
+# GPU support based on parsed options (GPU_VENDOR, GPU_ALL, GPU_NUMS)
+if [ "${GPU_VENDOR}" = "none" ]; then
     # No GPU - software rendering
     CMD="${CMD} --device=/dev/dri:rwm"
     CMD="${CMD} -e ENABLE_NVIDIA=false"
     VIDEO_ENCODER="x264enc"
-elif [ "${GPU_ARG}" = "intel" ]; then
+elif [ "${GPU_VENDOR}" = "intel" ]; then
     # Intel GPU with VA-API hardware acceleration
     CMD="${CMD} --device=/dev/dri:rwm"
     CMD="${CMD} -e ENABLE_NVIDIA=false"
     CMD="${CMD} -e LIBVA_DRIVER_NAME=iHD"
-    # Intel Quick Sync Video encoder via VA-API
     VIDEO_ENCODER="vah264enc"
     echo "Using Intel GPU with VA-API hardware acceleration (Quick Sync Video)"
-elif [ "${GPU_ARG}" = "amd" ]; then
+elif [ "${GPU_VENDOR}" = "amd" ]; then
     # AMD GPU - use for rendering but software encoding if VA-API not working
     CMD="${CMD} --device=/dev/dri:rwm"
     CMD="${CMD} --device=/dev/kfd:rwm"
     CMD="${CMD} -e ENABLE_NVIDIA=false"
-    # Try VA-API hardware encoding first, will fallback to software if unavailable
     VIDEO_ENCODER="x264enc"
     echo "Using AMD GPU for rendering with software encoding (x264)"
-elif [ "${GPU_ARG}" = "all" ]; then
-    # All NVIDIA GPUs
-    CMD="${CMD} --gpus all"
-    CMD="${CMD} --device=/dev/dri:rwm"
-    # VIDEO_ENCODER already set to nvh264enc by default
+elif [ "${GPU_VENDOR}" = "nvidia" ]; then
+    # NVIDIA: require explicit --all or --num
+    if [ "${GPU_ALL}" = "true" ]; then
+        CMD="${CMD} --gpus all"
+        CMD="${CMD} --device=/dev/dri:rwm"
+    elif [ -n "${GPU_NUMS}" ]; then
+        # Pass device list to docker --gpus option
+        CMD="${CMD} --gpus '\"device=${GPU_NUMS}\"'"
+        CMD="${CMD} --device=/dev/dri:rwm"
+    else
+        echo "Error: --gpu nvidia requires either --all or --num. Example: --gpu nvidia --all or --gpu nvidia --num 0,1"
+        exit 1
+    fi
+    # VIDEO_ENCODER is nvh264enc by default
 else
-    # Specific NVIDIA GPU(s) by device number
-    CMD="${CMD} --gpus '\"device=${GPU_ARG}\"'"
-    CMD="${CMD} --device=/dev/dri:rwm"
-    # VIDEO_ENCODER already set to nvh264enc by default
+    echo "Error: Unknown GPU vendor: ${GPU_VENDOR}"
+    exit 1
 fi
 
 # Display settings

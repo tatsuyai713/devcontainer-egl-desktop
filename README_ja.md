@@ -1,5 +1,43 @@
 # docker-selkies-egl-desktop
 
+## クイックスタート
+
+数分で開始できます：
+
+```bash
+# 1)（任意）事前ビルド済みベースイメージをプル
+docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04
+
+# 2) ユーザーイメージをビルド（英語）
+./build-user-image.sh
+
+# 2b) 日本語環境をビルド
+./build-user-image.sh JP
+
+# 3) コンテナ起動（Selkies、ソフトウェアレンダリング）
+./start-container.sh
+
+# 4) NVIDIA GPUで起動（Selkies）
+./start-container.sh --gpu nvidia --all
+
+# 5) KasmVNCで起動（NVIDIA）
+./start-container.sh --gpu nvidia --all --vnc
+
+# 6) ブラウザで開く（例：UID 1000 の場合）
+# http://localhost:11000  （HTTPS有効時は https://localhost:11000）
+```
+
+オートコンプリート（任意）:
+
+```bash
+# Bash: 補完スクリプトを読み込む
+source scripts/start-container-completion.bash
+
+# Zsh: scripts/_start-container を fpath にコピーし `compinit` を実行
+cp scripts/_start-container ~/.zfunc/_start-container
+autoload -U compinit && compinit
+```
+
 NVIDIA GPU用のOpenGL EGL/GLX、VulkanをWebRTCとHTML5でサポートするKubernetes向けKDE Plasmaデスクトップコンテナ。オープンソースのリモートクラウド/HPCグラフィックスまたはゲームストリーミングプラットフォームを提供します。
 
 ---
@@ -133,12 +171,12 @@ IN_LOCALE=JP ./build-user-image.sh # Mozc入力付き日本語環境
 
 # 3. コンテナを起動
 ./start-container.sh                      # ソフトウェアレンダリング（GPUなし）、Selkiesモード
-./start-container.sh --gpu all            # すべてのGPU（NVIDIA）、Selkiesモード
+./start-container.sh --gpu nvidia --all            # すべてのGPU（NVIDIA）、Selkiesモード
 ./start-container.sh -g intel             # Intel統合GPU、Selkiesモード
 ./start-container.sh --gpu amd            # AMD GPU、Selkiesモード
-./start-container.sh --gpu all --vnc      # NVIDIA GPUでKasmVNCモード
+./start-container.sh --gpu nvidia --all --vnc      # NVIDIA GPUでKasmVNCモード
 ./start-container.sh -g intel -v          # Intel GPUでKasmVNCモード
-./start-container.sh -g 0 -v              # NVIDIA GPU 0でKasmVNC
+./start-container.sh --gpu nvidia --num 0 -v              # NVIDIA GPU 0でKasmVNC
 # 注：--gpuを指定しない場合はソフトウェアレンダリングがデフォルト
 # 注：キーボードレイアウトはホストシステムから自動検出されます
 
@@ -353,9 +391,9 @@ docker build \
 # デフォルト：オプション未指定の場合はSelkiesでソフトウェアレンダリング
 
 # NVIDIA GPUオプション：
-./start-container.sh --gpu all            # 使用可能なすべてのNVIDIA GPUを使用
-./start-container.sh -g 0                 # NVIDIA GPU 0のみを使用
-./start-container.sh --gpu 0,1            # NVIDIA GPU 0と1を使用
+./start-container.sh --gpu nvidia --all            # 使用可能なすべてのNVIDIA GPUを使用
+./start-container.sh --gpu nvidia --num 0                 # NVIDIA GPU 0のみを使用
+./start-container.sh --gpu nvidia --num 0,1            # NVIDIA GPU 0と1を使用
 
 # Intel/AMD GPUオプション：
 ./start-container.sh --gpu intel          # Intel統合GPU（Quick Sync Video）を使用
@@ -366,9 +404,9 @@ docker build \
 ./start-container.sh --gpu none           # GPUなしを明示的に指定
 
 # ディスプレイモードオプション：
-./start-container.sh --gpu all            # Selkies GStreamer（WebRTC、デフォルト）
+./start-container.sh --gpu nvidia --all            # Selkies GStreamer（WebRTC、デフォルト）
 ./start-container.sh -g intel --vnc       # Intel GPUでKasmVNC（WebSocket経由のVNC）
-./start-container.sh --gpu all -v         # NVIDIA GPUでKasmVNC
+./start-container.sh --gpu nvidia --all -v         # NVIDIA GPUでKasmVNC
 ./start-container.sh -v                   # ソフトウェアレンダリングでKasmVNC
 
 # キーボードレイアウトのオーバーライド（デフォルトは自動検出）：

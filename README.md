@@ -2,6 +2,34 @@
 
 **[日本語版 (Japanese)](README_ja.md)**
 
+## Quick Start
+
+Get up and running in minutes:
+
+```bash
+# 1) (Optional) pull prebuilt base image
+docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04
+
+# 2) Build a user image (English)
+./build-user-image.sh
+
+# 2b) Build a user image (Japanese)
+./build-user-image.sh JP
+
+# 3) Start container (Selkies, software rendering)
+./start-container.sh
+
+# 4) Start container with NVIDIA GPUs (Selkies)
+./start-container.sh --gpu nvidia --all
+
+# 5) Start container with KasmVNC (NVIDIA)
+./start-container.sh --gpu nvidia --all --vnc
+
+# 6) Open in browser (example for UID 1000)
+# http://localhost:11000  (or https://localhost:11000 if HTTPS enabled)
+```
+
+
 KDE Plasma Desktop container designed for Kubernetes, supporting OpenGL EGL and GLX, Vulkan for NVIDIA GPUs through WebRTC and HTML5, providing an open-source remote cloud/HPC graphics or game streaming platform.
 
 ---
@@ -135,12 +163,12 @@ IN_LOCALE=JP ./build-user-image.sh # Japanese environment with Mozc input
 
 # 3. Start the container
 ./start-container.sh                      # Software rendering (no GPU), Selkies mode
-./start-container.sh --gpu all            # With all GPUs (NVIDIA), Selkies mode
-./start-container.sh -g intel             # With Intel integrated GPU, Selkies mode
+./start-container.sh --gpu nvidia --all   # With all GPUs (NVIDIA), Selkies mode
+./start-container.sh --gpu intel          # With Intel integrated GPU, Selkies mode
 ./start-container.sh --gpu amd            # With AMD GPU, Selkies mode
-./start-container.sh --gpu all --vnc      # KasmVNC mode with NVIDIA GPUs
-./start-container.sh -g intel -v          # KasmVNC mode with Intel GPU
-./start-container.sh -g 0 -v              # NVIDIA GPU 0 with KasmVNC
+./start-container.sh --gpu nvidia --all --vnc      # KasmVNC mode with NVIDIA GPUs
+./start-container.sh --gpu intel --vnc    # KasmVNC mode with Intel GPU
+./start-container.sh --gpu nvidia --num 0 -v              # NVIDIA GPU 0 with KasmVNC
 # Note: Default is software rendering if --gpu not specified
 # Note: Keyboard layout is auto-detected from your host system
 
@@ -158,7 +186,7 @@ IN_LOCALE=JP ./build-user-image.sh # Japanese environment with Mozc input
 # 7. Switch display mode (requires recreation)
 ./commit-container.sh              # Save changes first!
 ./stop-container.sh rm             # Remove container
-./start-container.sh -g intel --vnc # Recreate with KasmVNC mode
+./start-container.sh --gpu intel --vnc # Recreate with KasmVNC mode
 ```
 
 That's it! 🎉
@@ -356,28 +384,28 @@ The `start-container.sh` script uses optional arguments for GPU and display mode
 # Default: Software rendering with Selkies if no options specified
 
 # NVIDIA GPU options:
-./start-container.sh --gpu all            # Use all available NVIDIA GPUs
-./start-container.sh -g 0                 # Use NVIDIA GPU 0 only
-./start-container.sh --gpu 0,1            # Use NVIDIA GPU 0 and 1
+./start-container.sh --gpu nvidia --all            # Use all available NVIDIA GPUs
+./start-container.sh --gpu nvidia --num 0                 # Use NVIDIA GPU 0 only
+./start-container.sh --gpu nvidia --num 0,1            # Use NVIDIA GPU 0 and 1
 
 # Intel/AMD GPU options:
 ./start-container.sh --gpu intel          # Use Intel integrated GPU (Quick Sync Video)
-./start-container.sh -g amd               # Use AMD GPU (VCE/VCN)
+./start-container.sh --gpu amd               # Use AMD GPU (VCE/VCN)
 
 # Software rendering:
 ./start-container.sh                      # No GPU (software rendering, default)
 ./start-container.sh --gpu none           # Explicitly specify no GPU
 
 # Display mode options:
-./start-container.sh --gpu all            # Selkies GStreamer (WebRTC, default)
-./start-container.sh -g intel --vnc       # KasmVNC (VNC over WebSocket) with Intel GPU
-./start-container.sh --gpu all -v         # KasmVNC with NVIDIA GPUs
+./start-container.sh --gpu nvidia --all            # Selkies GStreamer (WebRTC, default)
+./start-container.sh --gpu intel --vnc       # KasmVNC (VNC over WebSocket) with Intel GPU
+./start-container.sh --gpu nvidia --all -v         # KasmVNC with NVIDIA GPUs
 ./start-container.sh -v                   # KasmVNC with software rendering
 
 # Keyboard layout override (auto-detected by default):
-KEYBOARD_LAYOUT=jp ./start-container.sh -g intel        # Japanese keyboard
+KEYBOARD_LAYOUT=jp ./start-container.sh --gpu intel        # Japanese keyboard
 KEYBOARD_LAYOUT=us ./start-container.sh --gpu intel    # US keyboard
-KEYBOARD_LAYOUT=de KEYBOARD_MODEL=pc105 ./start-container.sh -g all  # German keyboard
+KEYBOARD_LAYOUT=de KEYBOARD_MODEL=pc105 ./start-container.sh --gpu nvidia --all  # German keyboard
 ```
 
 **UID-Based Port Assignment (Multi-User Support):**
@@ -433,15 +461,15 @@ If you need to switch between Selkies and KasmVNC:
 ```bash
 # Method 1: Delete and recreate
 ./stop-container.sh rm
-./start-container.sh -g intel --vnc # Switch to KasmVNC
+./start-container.sh --gpu intel --vnc # Switch to KasmVNC
 
 # Method 2: Commit, delete, and recreate
 ./commit-container.sh              # Save changes first
 ./stop-container.sh rm
-./start-container.sh -g intel      # Switch to Selkies
+./start-container.sh --gpu intel      # Switch to Selkies
 
 # Method 3: Commit and auto-restart
-./commit-container.sh restart -g intel --vnc  # Save and switch to KasmVNC
+./commit-container.sh restart --gpu intel --vnc  # Save and switch to KasmVNC
 ```
 
 The start script will detect mode mismatch and show a helpful error message with instructions.
@@ -451,19 +479,19 @@ The start script will detect mode mismatch and show a helpful error message with
 ```bash
 # Use HTTPS
 ./generate-ssl-cert.sh
-./start-container.sh -g all
+./start-container.sh --gpu nvidia --all
 
 # Use a different port
-HTTPS_PORT=9090 ./start-container.sh --gpu all
+HTTPS_PORT=9090 ./start-container.sh --gpu nvidia --all
 
 # High resolution (4K)
-DISPLAY_WIDTH=3840 DISPLAY_HEIGHT=2160 ./start-container.sh -g all
+DISPLAY_WIDTH=3840 DISPLAY_HEIGHT=2160 ./start-container.sh --gpu nvidia --all
 
 # Foreground mode (see logs directly)
-DETACHED=false ./start-container.sh --gpu all
+DETACHED=false ./start-container.sh --gpu nvidia --all
 
 # Custom container name
-CONTAINER_NAME=my-desktop ./start-container.sh -g all
+CONTAINER_NAME=my-desktop ./start-container.sh --gpu nvidia --all
 ```
 
 ### Stopping the Container
@@ -539,8 +567,8 @@ If you've installed software or made changes in the container:
 ./commit-container.sh
 
 # Save and restart automatically
-./commit-container.sh restart --gpu all      # Restart with all NVIDIA GPUs
-./commit-container.sh restart -g intel       # Restart with Intel GPU
+./commit-container.sh restart --gpu nvidia --all      # Restart with all NVIDIA GPUs
+./commit-container.sh restart --gpu intel       # Restart with Intel GPU
 ./commit-container.sh restart --gpu amd      # Restart with AMD GPU
 ./commit-container.sh restart --vnc          # Restart with VNC mode (no GPU)
 
@@ -550,7 +578,7 @@ COMMIT_TAG=my-setup ./commit-container.sh
 # Use the saved image
 IMAGE_NAME=devcontainer-ubuntu-egl-desktop-$(whoami):my-setup \
   CONTAINER_NAME=my-desktop-2 \
-  ./start-container.sh -g all
+  ./start-container.sh --gpu nvidia --all
 ```
 
 **Important Notes:**
@@ -575,10 +603,10 @@ exit
 ./stop-container.sh rm
 
 # 4. Next startup uses the committed image with all your changes
-./start-container.sh -g intel
+./start-container.sh --gpu intel
 
 # 5. To switch display mode with saved changes:
-./commit-container.sh restart -g intel --vnc  # Save and switch to KasmVNC
+./commit-container.sh restart --gpu intel --vnc  # Save and switch to KasmVNC
 ```
 
 **Deleting Image:**
