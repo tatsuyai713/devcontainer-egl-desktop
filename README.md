@@ -690,6 +690,7 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 - WebRTC-based streaming
 - Low latency, high performance
 - Better for gaming and graphics
+- ✅ **Audio streaming supported:** Audio is streamed to remote browser clients via WebRTC
 
 ```bash
 ./start-container.sh -g all       # Uses Selkies by default
@@ -700,6 +701,8 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 - VNC-based streaming over WebSocket
 - Better compatibility
 - Works without GPU
+- ⚠️ **Audio limitation:** Uses host PulseAudio (audio only on host machine, not streamed to remote browser)
+- For audio streaming to remote clients, use Selkies mode instead
 
 ```bash
 ./start-container.sh -g all --vnc # Activates KasmVNC mode

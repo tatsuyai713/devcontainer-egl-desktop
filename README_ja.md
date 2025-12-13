@@ -690,6 +690,7 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 - WebRTCベースのストリーミング
 - 低遅延、高パフォーマンス
 - ゲームとグラフィックスに適している
+- ✅ **音声ストリーミング対応：** WebRTC経由でリモートブラウザクライアントに音声が転送される
 
 ```bash
 ./start-container.sh -g all       # デフォルトでSelkiesを使用
@@ -700,6 +701,8 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 - WebSocket経由のVNCベースストリーミング
 - 互換性が高い
 - GPUなしで動作
+- ⚠️ **音声の制限：** ホストのPulseAudioを使用（ホストマシンでのみ音声出力、リモートブラウザには音声が転送されない）
+- 音声をリモートクライアントに転送する場合は、代わりにSelkiesモードを使用してください
 
 ```bash
 ./start-container.sh -g all --vnc # KasmVNCモードを有効化
