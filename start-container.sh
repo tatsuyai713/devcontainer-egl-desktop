@@ -189,30 +189,30 @@ if [ "${GPU_ARG}" = "none" ]; then
     CMD="${CMD} -e ENABLE_NVIDIA=false"
     VIDEO_ENCODER="x264enc"
 elif [ "${GPU_ARG}" = "intel" ]; then
-    # Intel GPU
+    # Intel GPU - use for rendering but software encoding if VA-API not working
     CMD="${CMD} --device=/dev/dri:rwm"
     CMD="${CMD} -e ENABLE_NVIDIA=false"
-    # Intel Quick Sync Video encoder
-    VIDEO_ENCODER="${VIDEO_ENCODER:-vah264enc}"
-    echo "Using Intel GPU with VA-API hardware acceleration"
+    # Try VA-API hardware encoding first, will fallback to software if unavailable
+    VIDEO_ENCODER="x264enc"
+    echo "Using Intel GPU for rendering with software encoding (x264)"
 elif [ "${GPU_ARG}" = "amd" ]; then
-    # AMD GPU
+    # AMD GPU - use for rendering but software encoding if VA-API not working
     CMD="${CMD} --device=/dev/dri:rwm"
     CMD="${CMD} --device=/dev/kfd:rwm"
     CMD="${CMD} -e ENABLE_NVIDIA=false"
-    # AMD VCE/VCN encoder
-    VIDEO_ENCODER="${VIDEO_ENCODER:-vah264enc}"
-    echo "Using AMD GPU with VA-API hardware acceleration"
+    # Try VA-API hardware encoding first, will fallback to software if unavailable
+    VIDEO_ENCODER="x264enc"
+    echo "Using AMD GPU for rendering with software encoding (x264)"
 elif [ "${GPU_ARG}" = "all" ]; then
     # All NVIDIA GPUs
     CMD="${CMD} --gpus all"
     CMD="${CMD} --device=/dev/dri:rwm"
-    VIDEO_ENCODER="${VIDEO_ENCODER:-nvh264enc}"
+    # VIDEO_ENCODER already set to nvh264enc by default
 else
     # Specific NVIDIA GPU(s) by device number
     CMD="${CMD} --gpus '\"device=${GPU_ARG}\"'"
     CMD="${CMD} --device=/dev/dri:rwm"
-    VIDEO_ENCODER="${VIDEO_ENCODER:-nvh264enc}"
+    # VIDEO_ENCODER already set to nvh264enc by default
 fi
 
 # Display settings
@@ -240,6 +240,8 @@ CMD="${CMD} -e SELKIES_AUDIO_BITRATE=${AUDIO_BITRATE}"
 # Display mode (Selkies or KasmVNC)
 if [ "${DISPLAY_MODE}" = "vnc" ]; then
     CMD="${CMD} -e KASMVNC_ENABLE=true"
+else
+    CMD="${CMD} -e KASMVNC_ENABLE=false"
 fi
 
 # HTTPS configuration
