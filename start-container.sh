@@ -6,6 +6,7 @@ set -e
 # Default values
 GPU_ARG="none"
 DISPLAY_MODE="selkies"
+ENABLE_TURN="true"
 
 # Show usage
 show_usage() {
@@ -20,6 +21,9 @@ show_usage() {
     echo "                      amd       - Use AMD GPU"
     echo "  -v, --vnc           Use KasmVNC instead of Selkies GStreamer"
     echo "  -h, --help          Show this help message"
+    echo ""
+    echo "Note: TURN server is enabled by default for remote Selkies access."
+    echo "      Ports are automatically assigned based on UID to avoid conflicts."
     echo ""
     echo "Examples:"
     echo "  $0 --gpu all              # Use all NVIDIA GPUs with Selkies"
@@ -59,7 +63,18 @@ done
 CONTAINER_NAME="${CONTAINER_NAME:-devcontainer-egl-desktop-$(whoami)}"
 IMAGE_NAME="${IMAGE_NAME:-devcontainer-ubuntu-egl-desktop-$(whoami):24.04}"
 ENABLE_HTTPS="${ENABLE_HTTPS:-false}"
-HTTPS_PORT="${HTTPS_PORT:-8080}"
+
+# Port configuration (UID-based for multi-user support)
+USER_UID=$(id -u)
+# HTTPS_PORT: 10000 + UID (e.g., UID 1000 -> port 11000)
+HTTPS_PORT="${HTTPS_PORT:-$((10000 + USER_UID))}"
+# TURN port: 13000 + UID (e.g., UID 1000 -> port 14000)
+TURN_PORT="$((13000 + USER_UID))"
+# UDP port range: 40000 + ((UID - 1000) * 200) to +100
+# e.g., UID 1000 -> ports 40000-40100, UID 1001 -> 40200-40300
+UDP_PORT_START="$((40000 + (USER_UID - 1000) * 200))"
+UDP_PORT_END="$((UDP_PORT_START + 100))"
+
 DETACHED="${DETACHED:-true}"
 
 # Display settings
@@ -179,6 +194,10 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         echo "Access via: http://localhost:${HTTPS_PORT}"
     fi
     echo "Username: $(whoami)"
+    echo "UID: ${USER_UID}, Port: ${HTTPS_PORT}"
+    if [ "${ENABLE_TURN}" = "true" ]; then
+        echo "TURN Port: ${TURN_PORT}, UDP: ${UDP_PORT_START}-${UDP_PORT_END}"
+    fi
     echo ""
     echo "View logs: ./logs-container.sh"
     echo "Stop container: ./stop-container.sh"
@@ -314,8 +333,43 @@ fi
 # Port mapping
 CMD="${CMD} -p ${HTTPS_PORT}:8080"
 
+# TURN server ports (Selkies mode only, for remote access)
+if [ "${ENABLE_TURN}" = "true" ] && [ "${DISPLAY_MODE}" = "selkies" ]; then
+    CMD="${CMD} -p ${TURN_PORT}:3478/tcp"
+    CMD="${CMD} -p ${TURN_PORT}:3478/udp"
+    CMD="${CMD} -p ${UDP_PORT_START}-${UDP_PORT_END}:${UDP_PORT_START}-${UDP_PORT_END}/udp"
+    # TURN server configuration
+    CMD="${CMD} -e TURN_MIN_PORT=${UDP_PORT_START}"
+    CMD="${CMD} -e TURN_MAX_PORT=${UDP_PORT_END}"
+    # TURN_LISTENING_PORT: Internal port for turnserver (always 3478)
+    CMD="${CMD} -e TURN_LISTENING_PORT=3478"
+    # Get LAN IP address for TURN server
+    LAN_IP=$(ip -4 addr show | grep "inet " | grep -v "127.0.0.1" | grep -v "172.17" | head -1 | awk '{print $2}' | cut -d/ -f1)
+    if [ -n "${LAN_IP}" ]; then
+        # SELKIES_TURN_PORT: External port for Selkies client (UID-based)
+        CMD="${CMD} -e SELKIES_TURN_HOST=${LAN_IP}"
+        CMD="${CMD} -e SELKIES_TURN_PORT=${TURN_PORT}"
+        CMD="${CMD} -e TURN_EXTERNAL_IP=${LAN_IP}"
+        echo "Enabling TURN server for LAN access (${LAN_IP}:${TURN_PORT}, UDP ports ${UDP_PORT_START}-${UDP_PORT_END})"
+    else
+        CMD="${CMD} -e SELKIES_TURN_PORT=${TURN_PORT}"
+        echo "Enabling TURN server ports (TCP/UDP ${TURN_PORT}, UDP ${UDP_PORT_START}-${UDP_PORT_END})"
+    fi
+fi
+
 # Mount home directory as host_home and create user's home directory
 CMD="${CMD} -v ${HOME}:/home/$(whoami)/host_home"
+
+# Mount host PulseAudio socket for audio support (KasmVNC mode only)
+if [ "${DISPLAY_MODE}" = "vnc" ] && [ -S "/run/user/$(id -u)/pulse/native" ]; then
+    CMD="${CMD} -e PULSE_SERVER=unix:/tmp/pulse/native"
+    CMD="${CMD} -e PULSE_COOKIE=/tmp/pulse/cookie"
+    CMD="${CMD} -v /run/user/$(id -u)/pulse/native:/tmp/pulse/native"
+    if [ -f "${HOME}/.config/pulse/cookie" ]; then
+        CMD="${CMD} -v ${HOME}/.config/pulse/cookie:/tmp/pulse/cookie:ro"
+    fi
+    echo "Mounting host PulseAudio socket for KasmVNC audio support"
+fi
 
 # Image name
 CMD="${CMD} ${IMAGE_NAME}"
@@ -337,6 +391,10 @@ if [ "${DETACHED}" = "true" ]; then
         echo "Access via: http://localhost:${HTTPS_PORT}"
     fi
     echo "Username: $(whoami)"
+    echo "UID: ${USER_UID}, Port: ${HTTPS_PORT}"
+    if [ "${ENABLE_TURN}" = "true" ]; then
+        echo "TURN Port: ${TURN_PORT}, UDP: ${UDP_PORT_START}-${UDP_PORT_END}"
+    fi
     echo ""
     echo "View logs: ./logs-container.sh"
     echo "Stop container: ./stop-container.sh"

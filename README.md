@@ -384,7 +384,40 @@ KEYBOARD_LAYOUT=us ./start-container.sh --gpu intel    # US keyboard
 KEYBOARD_LAYOUT=de KEYBOARD_MODEL=pc105 ./start-container.sh -g all  # German keyboard
 ```
 
-Then open your browser to: <http://localhost:8080>
+**UID-Based Port Assignment (Multi-User Support):**
+
+Ports are automatically assigned based on your user ID to enable multiple users on the same host:
+
+- **HTTPS Port**: `10000 + UID` (e.g., UID 1000 → port 11000)
+- **TURN Port**: `13000 + UID` (e.g., UID 1000 → port 14000)
+- **UDP Range**: `40000 + (UID - 1000) × 200` to `+100` (e.g., UID 1000 → 40000-40100)
+
+Access via: `http://localhost:${HTTPS_PORT}` (e.g., `http://localhost:11000` for UID 1000)
+
+**Remote Access (LAN/WAN):**
+
+TURN server is **enabled by default** for Selkies mode, allowing remote access without additional options:
+
+```bash
+./start-container.sh --gpu intel          # TURN server automatically enabled
+```
+
+The TURN server enables WebRTC connection for remote access:
+- **TURN Port**: UID-based (e.g., port 14000 for UID 1000)
+- **UDP Range**: UID-based (e.g., 40000-40100 for UID 1000)
+- Auto-detects LAN IP address for proper routing
+- Not required for KasmVNC mode (VNC doesn't use WebRTC)
+
+Access from remote PC: `https://<host-ip>:<https-port>` (e.g., `https://192.168.1.100:11000` for UID 1000)
+
+⚠️ **Note:** Container startup may take longer due to UDP port range mapping (~100 ports per user).
+
+**Multi-User Support:**
+
+Multiple users can run containers simultaneously on the same host without port conflicts:
+- Each user gets unique HTTPS, TURN, and UDP port ranges based on their UID
+- Example: User A (UID 1000) uses ports 11000, 14000, 40000-40100
+- Example: User B (UID 1001) uses ports 11001, 14001, 40200-40300
 
 **Container Features:**
 
