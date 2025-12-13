@@ -86,6 +86,13 @@ This repository is an enhanced fork of the original Selkies EGL Desktop project,
   - fcitx input method framework included
   - US/English remains the default
 
+- **⌨️ Automatic Keyboard Detection:** Host keyboard layout auto-configured
+  - Reads from `/etc/default/keyboard` (system default)
+  - Falls back to `setxkbmap -query` (current X session)
+  - Supports Japanese (jp106), US, UK, German, French, and more
+  - Works with both Selkies and KasmVNC modes
+  - Manual override available with `KEYBOARD_LAYOUT` environment variable
+
 - **🌐 Chrome Sandbox Permanent Fix:** Chrome runs properly in containers
   - Wrapper script in `/usr/local/bin` ensures `--no-sandbox` flag
   - Survives Chrome package updates without manual intervention
@@ -125,22 +132,29 @@ IN_LOCALE=JP ./build-user-image.sh # Japanese environment with Mozc input
 ./generate-ssl-cert.sh
 
 # 3. Start the container
-./start-container.sh all          # With all GPUs (NVIDIA)
-./start-container.sh intel        # With Intel integrated GPU
-./start-container.sh amd          # With AMD GPU
+./start-container.sh all          # With all GPUs (NVIDIA), Selkies mode
+./start-container.sh intel        # With Intel integrated GPU, Selkies mode
+./start-container.sh amd          # With AMD GPU, Selkies mode
 ./start-container.sh none         # Without GPU (software rendering)
-./start-container.sh all vnc      # KasmVNC mode
+./start-container.sh all vnc      # KasmVNC mode with NVIDIA GPUs
+./start-container.sh intel vnc    # KasmVNC mode with Intel GPU
+# Note: Keyboard layout is auto-detected from your host system
 
 # 4. Access via browser
 # → http://localhost:8080 (or https://localhost:8080 if HTTPS enabled)
 
-# 5. Save your changes (optional)
-./commit-container.sh              # Save container state
+# 5. Save your changes (IMPORTANT before removing container!)
+./commit-container.sh              # Save container state to image
 ./commit-container.sh restart all  # Save and restart with all GPUs
 
 # 6. Stop the container
-./stop-container.sh                # Stop (container persists)
-./stop-container.sh rm             # Stop and remove
+./stop-container.sh                # Stop (container persists, can restart)
+./stop-container.sh rm             # Stop and remove (only after commit!)
+
+# 7. Switch display mode (requires recreation)
+./commit-container.sh              # Save changes first!
+./stop-container.sh rm             # Remove container
+./start-container.sh intel vnc     # Recreate with KasmVNC mode
 ```
 
 That's it! 🎉
@@ -165,15 +179,15 @@ That's it! 🎉
 
 - **Docker** 19.03 or later
 - **GPU** (optional, for hardware acceleration)
-  - **NVIDIA GPU**
+  - **NVIDIA GPU** ✅ Tested
     - Driver version 450.80.02 or later
     - Maxwell generation or newer
     - NVIDIA Container Toolkit installed
-  - **Intel GPU**
+  - **Intel GPU** ⚠️ Untested
     - Intel integrated graphics (HD Graphics, Iris, Arc)
     - Quick Sync Video support
     - VA-API drivers included in container
-  - **AMD GPU**
+  - **AMD GPU** ⚠️ Untested
     - Radeon graphics with VCE/VCN encoder
     - VA-API drivers included in container
 - **Linux Host** (Ubuntu 20.04+ recommended)
@@ -225,7 +239,9 @@ The base image is pre-built and available from the registry:
 ```bash
 # Automatically pulled when building user image
 # Or pull manually:
-docker pull devcontainer-ubuntu24.04-egl-desktop-base:latest
+docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:latest
+# Or specific version:
+docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04
 ```
 
 ### 2. Build User Image
@@ -263,13 +279,13 @@ NO_CACHE=true ./build-user-image.sh
 
 # Build for a different user
 docker build \
-    --build-arg BASE_IMAGE=devcontainer-ubuntu24.04-egl-desktop-base:latest \
+    --build-arg BASE_IMAGE=ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04 \
     --build-arg USER_NAME=johndoe \
     --build-arg USER_UID=1001 \
     --build-arg USER_GID=1001 \
     --build-arg USER_PASSWORD=johnspassword \
     -f files/Dockerfile.user \
-    -t devcontainer-ubuntu24.04-egl-desktop-base:johndoe \
+    -t devcontainer-ubuntu-egl-desktop:24.04-johndoe \
     .
 ```
 
@@ -300,6 +316,11 @@ The `start-container.sh` script requires a GPU argument:
 ./start-container.sh all          # Selkies GStreamer (WebRTC, default)
 ./start-container.sh intel vnc    # KasmVNC (VNC over WebSocket) with Intel GPU
 ./start-container.sh all vnc      # KasmVNC with NVIDIA GPUs
+
+# Keyboard layout override (auto-detected by default):
+KEYBOARD_LAYOUT=jp ./start-container.sh intel        # Japanese keyboard
+KEYBOARD_LAYOUT=us ./start-container.sh intel        # US keyboard
+KEYBOARD_LAYOUT=de KEYBOARD_MODEL=pc105 ./start-container.sh all  # German keyboard
 ```
 
 Then open your browser to: <http://localhost:8080>
@@ -311,6 +332,29 @@ Then open your browser to: <http://localhost:8080>
 - **Host home mount:** Available at `~/host_home`
 - **Container name:** `devcontainer-egl-desktop-{username}`
 - **GPU flexibility:** NVIDIA, Intel, AMD, or software rendering
+- **Auto keyboard detection:** Host keyboard layout automatically applied
+
+**Important: Display Mode Switching**
+
+⚠️ **Display mode (Selkies/KasmVNC) is set at container creation and cannot be changed for existing containers.**
+
+If you need to switch between Selkies and KasmVNC:
+
+```bash
+# Method 1: Delete and recreate
+./stop-container.sh rm
+./start-container.sh intel vnc     # Switch to KasmVNC
+
+# Method 2: Commit, delete, and recreate
+./commit-container.sh              # Save changes first
+./stop-container.sh rm
+./start-container.sh intel         # Switch to Selkies
+
+# Method 3: Commit and auto-restart
+./commit-container.sh restart intel vnc  # Save and switch to KasmVNC
+```
+
+The start script will detect mode mismatch and show a helpful error message with instructions.
 
 ### Common Options
 
@@ -414,12 +458,38 @@ If you've installed software or made changes in the container:
 COMMIT_TAG=my-setup ./commit-container.sh
 
 # Use the saved image
-IMAGE_NAME=devcontainer-ubuntu24.04-egl-desktop:my-setup \
+IMAGE_NAME=devcontainer-ubuntu-egl-desktop:my-setup \
   CONTAINER_NAME=my-desktop-2 \
   ./start-container.sh all
 ```
 
-**Note:** The image tag format is `24.04-{username}` (without timestamp) for easy reusability.
+**Important Notes:**
+
+- ⚠️ **Always commit before `./stop-container.sh rm`** - Changes are lost if you remove without committing
+- ✅ The image tag format is `24.04-{username}` (without timestamp) for easy reusability
+- ✅ Committed images persist even after container deletion
+- ✅ Next startup automatically uses the committed image
+
+**Workflow Example:**
+
+```bash
+# 1. Work in container, install software, configure settings
+./shell-container.sh
+# ... install packages, configure environment ...
+exit
+
+# 2. Save your changes to the image
+./commit-container.sh
+
+# 3. Stop and remove container safely (changes are saved in image)
+./stop-container.sh rm
+
+# 4. Next startup uses the committed image with all your changes
+./start-container.sh intel
+
+# 5. To switch display mode with saved changes:
+./commit-container.sh restart intel vnc  # Save and switch to KasmVNC
+```
 
 **Deleting Image:**
 
@@ -479,6 +549,45 @@ VIDEO_BITRATE=4000        # Lower bitrate for CPU
 AUDIO_BITRATE=128000      # Audio bitrate in bps (default: 128000)
 ./start-container.sh all
 ```
+
+### Keyboard Settings
+
+**Automatic Detection (Default):**
+
+The container automatically detects your host keyboard layout from:
+1. `/etc/default/keyboard` (system default configuration) - **Priority**
+2. `setxkbmap -query` (current X session) - Fallback
+
+Supported layouts include: Japanese (jp), US (us), UK (gb), German (de), French (fr), Spanish (es), Italian (it), Korean (kr), Chinese (cn), and more.
+
+**Manual Override:**
+
+```bash
+# Specify keyboard layout manually
+KEYBOARD_LAYOUT=jp ./start-container.sh intel              # Japanese keyboard
+KEYBOARD_LAYOUT=us ./start-container.sh intel              # US keyboard
+KEYBOARD_LAYOUT=de ./start-container.sh intel              # German keyboard
+
+# With keyboard model (for non-standard keyboards)
+KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh intel  # Japanese 106-key
+
+# With keyboard variant
+KEYBOARD_LAYOUT=us KEYBOARD_VARIANT=dvorak ./start-container.sh all # Dvorak layout
+
+# Full specification
+KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-container.sh intel
+```
+
+**Common Keyboard Models:**
+- `pc105` - Standard 105-key PC keyboard (default)
+- `jp106` - Japanese 106/109-key keyboard
+- `pc104` - US 104-key keyboard
+
+**How it works:**
+- Keyboard layout is set at container creation time
+- Applied to both Selkies and KasmVNC modes
+- Configuration uses X11 XKB (setxkbmap) and KDE keyboard settings
+- Works with fcitx input method for Asian languages
 
 ### Display Mode
 
@@ -561,7 +670,7 @@ For production, use certificates from [Let's Encrypt](https://letsencrypt.org/).
 ./logs-container.sh
 
 # Check if image exists
-docker images | grep devcontainer-ubuntu24.04-egl-desktop-base
+docker images | grep devcontainer-ubuntu-egl-desktop-base
 
 # Rebuild user image
 ./build-user-image.sh
@@ -644,6 +753,64 @@ If you get permission errors with mounted volumes:
 ./build-user-image.sh
 ```
 
+### Keyboard Layout Issues
+
+**Incorrect keys (e.g., @ key types 2):**
+
+```bash
+# Check detected keyboard layout
+echo $KEYBOARD_LAYOUT  # Should match your system
+
+# Verify host keyboard configuration
+cat /etc/default/keyboard
+
+# Override with correct layout
+./stop-container.sh rm
+KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh intel
+```
+
+**For Japanese keyboards specifically:**
+- Use `KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106` for 106/109-key Japanese keyboards
+- Model `jp106` is critical for correct @ key placement
+- Auto-detection should work if `/etc/default/keyboard` is correctly configured
+
+**Keyboard doesn't work at all:**
+
+```bash
+# Check if setxkbmap is installed (should be in base image)
+./shell-container.sh
+which setxkbmap
+
+# Manually test keyboard configuration
+setxkbmap -layout jp -model jp106 -query
+```
+
+### Display Mode Issues
+
+**Error: "Container was created with X mode, but you're trying to start it with Y mode"**
+
+This is expected behavior. Display mode (Selkies/KasmVNC) cannot be changed for existing containers.
+
+**Solution:**
+
+```bash
+# Option 1: Keep current mode
+./start-container.sh intel  # Use the original mode
+
+# Option 2: Save changes and recreate
+./commit-container.sh       # Save changes first!
+./stop-container.sh rm      # Remove container
+./start-container.sh intel vnc  # Recreate with new mode
+
+# Option 3: One-step commit and recreate
+./commit-container.sh restart intel vnc
+```
+
+**Why can't I change the mode?**
+- Display mode is set via environment variables at container creation (`docker run`)
+- Running containers use fixed environment variables
+- `docker start` on existing containers doesn't change environment variables
+
 ### Rebuilding Images
 
 ```bash
@@ -651,7 +818,7 @@ If you get permission errors with mounted volumes:
 NO_CACHE=true ./build-user-image.sh
 
 # Pull latest base image
-docker pull devcontainer-ubuntu24.04-egl-desktop-base:latest
+docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:latest
 ./build-user-image.sh
 ```
 
@@ -665,7 +832,7 @@ If you prefer docker-compose:
 
 ```bash
 # Start
-USER_IMAGE=devcontainer-ubuntu24.04-egl-desktop-base:$(whoami) \
+USER_IMAGE=devcontainer-ubuntu-egl-desktop:24.04-$(whoami) \
   docker-compose -f docker-compose.user.yml up -d
 
 # Stop
@@ -680,7 +847,7 @@ docker-compose -f docker-compose.user.yml down
 #### Container Settings
 
 - `CONTAINER_NAME` - Container name (default: `devcontainer-egl-desktop-$(whoami)`)
-- `IMAGE_NAME` - Image to use (default: `devcontainer-ubuntu24.04-egl-desktop-base:$(whoami)`)
+- `IMAGE_NAME` - Image to use (default: `devcontainer-ubuntu-egl-desktop:24.04-$(whoami)`)
 - `DETACHED` - Run in background (default: `true`)
 
 #### Display
@@ -829,7 +996,7 @@ Or manually:
 ```bash
 docker build \
     -f files/Dockerfile.base \
-    -t devcontainer-ubuntu24.04-egl-desktop-base:latest \
+    -t ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04 \
     .
 ```
 

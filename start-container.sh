@@ -108,11 +108,35 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     echo "Container '${CONTAINER_NAME}' already exists."
     echo "========================================"
     
+    # Check if display mode is different from existing container
+    EXISTING_KASMVNC=$(docker inspect "${CONTAINER_NAME}" --format '{{range .Config.Env}}{{println .}}{{end}}' | grep "^KASMVNC_ENABLE=" | cut -d= -f2)
+    if [ "${DISPLAY_MODE}" = "vnc" ] && [ "${EXISTING_KASMVNC}" = "false" ]; then
+        echo ""
+        echo "⚠️  WARNING: Container was created with Selkies mode, but you're trying to start it with KasmVNC mode."
+        echo "    Display mode cannot be changed for existing containers."
+        echo ""
+        echo "Options:"
+        echo "  1. Keep using Selkies mode: ./start-container.sh ${GPU_ARG}"
+        echo "  2. Delete and recreate with KasmVNC: ./stop-container.sh rm && ./start-container.sh ${GPU_ARG} vnc"
+        echo ""
+        exit 1
+    elif [ "${DISPLAY_MODE}" = "selkies" ] && [ "${EXISTING_KASMVNC}" = "true" ]; then
+        echo ""
+        echo "⚠️  WARNING: Container was created with KasmVNC mode, but you're trying to start it with Selkies mode."
+        echo "    Display mode cannot be changed for existing containers."
+        echo ""
+        echo "Options:"
+        echo "  1. Keep using KasmVNC mode: ./start-container.sh ${GPU_ARG} vnc"
+        echo "  2. Delete and recreate with Selkies: ./stop-container.sh rm && ./start-container.sh ${GPU_ARG}"
+        echo ""
+        exit 1
+    fi
+    
     # Check if container is running
     if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-        echo "Container is already running."
+        echo "Container is already running with $([ "${EXISTING_KASMVNC}" = "true" ] && echo "KasmVNC" || echo "Selkies") mode."
     else
-        echo "Starting existing container..."
+        echo "Starting existing container with $([ "${EXISTING_KASMVNC}" = "true" ] && echo "KasmVNC" || echo "Selkies") mode..."
         docker start "${CONTAINER_NAME}"
     fi
     

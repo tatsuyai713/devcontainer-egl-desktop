@@ -86,12 +86,26 @@ echo ""
 BASE_EXISTS=$(docker images -q "${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}" 2>/dev/null)
 
 if [ -z "${BASE_EXISTS}" ]; then
-    echo "Error: Base image '${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}' not found!"
+    echo "Base image '${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}' not found locally."
+    echo "Attempting to pull from registry..."
     echo ""
-    echo "Please build the base image first:"
-    echo "  ./build-base-image.sh"
-    echo ""
-    exit 1
+    
+    if docker pull "${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}"; then
+        echo ""
+        echo "Successfully pulled base image from registry."
+        echo ""
+    else
+        echo ""
+        echo "Error: Failed to pull base image '${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}'"
+        echo ""
+        echo "Please either:"
+        echo "  1. Pull the base image manually:"
+        echo "     docker pull ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}"
+        echo "  2. Or build it locally:"
+        echo "     cd files && ./build-base-image.sh"
+        echo ""
+        exit 1
+    fi
 fi
 
 # Build user-specific image
