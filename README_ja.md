@@ -68,13 +68,13 @@ NVIDIA GPU用のOpenGL EGL/GLX、VulkanをWebRTCとHTML5でサポートするKub
   - `commit-container.sh` - 変更を保存
   - `generate-ssl-cert.sh` - SSL証明書ジェネレーター
 
-- **👥 マルチユーザーサポート:** 各ユーザーが独立した環境を取得
+- **👥 マルチユーザーサポート:** 各ユーザーが独立した環境を持つ
   - イメージ名にユーザー名を含む：`devcontainer-ubuntu-egl-desktop-{username}:24.04`
   - コンテナ名にユーザー名を含む：`devcontainer-egl-desktop-{username}`
   - 各ユーザーが自分のUID/GIDで独自のイメージをビルド
   - 同じホスト上の複数ユーザーで競合なし
 
-- **🔧 生活の質の向上機能:**
+- **🔧 利便性向上機能:**
   - KasmVNCはデフォルトでスケーリング有効の自動接続
   - ホームディレクトリが`~/host_home`にマウントされアクセスが簡単
   - コンテナホスト名が`$(hostname)-Container`に設定
@@ -94,9 +94,9 @@ NVIDIA GPU用のOpenGL EGL/GLX、VulkanをWebRTCとHTML5でサポートするKub
   - SelkiesとKasmVNCの両モードで動作
   - `KEYBOARD_LAYOUT`環境変数で手動オーバーライド可能
 
-- **🌐 Chrome Sandbox永続的修正:** ChromeがコンテナでDiskに動作
+- **🌐 Chrome Sandbox永続的修正:** Chromeがコンテナで正しく動作
   - `/usr/local/bin`のラッパースクリプトが`--no-sandbox`フラグを保証
-  - 手動介入なしでChromeパッケージの更新に耐える
+  - Chromeパッケージの更新後も手動介入なしで動作
   - ユーザースクリプトや手動修正が不要
 
 - **🖥️ デスクトップショートカット:** 標準デスクトップ環境体験
@@ -224,7 +224,7 @@ IN_LOCALE=JP ./build-user-image.sh # Mozc入力付き日本語環境
 
 - ✅ **高速セットアップ:** 30〜60分のビルド待ちなし
 - ✅ **適切な権限:** ファイルがホストのUID/GIDに一致
-- ✅ **マルチユーザー:** 各ユーザーが独自の隔離された環境を取得
+- ✅ **マルチユーザー:** 各ユーザーが独自の隔離された環境を持つ
 - ✅ **簡単な更新:** 新しいベースイメージをプル、ユーザーイメージを再ビルド
 
 **UID/GID一致が重要な理由：**
@@ -415,7 +415,7 @@ TURNサーバーがリモートアクセス用のWebRTC接続を有効化しま�
 **マルチユーザーサポート：**
 
 複数のユーザーが同じホスト上でポートの競合なしで同時にコンテナを実行できます：
-- 各ユーザーはUIDに基づいて固有のHTTPS、TURN、UDPポート範囲を取得
+- 各ユーザーはUIDに基づいて固有のHTTPS、TURN、UDPポート範囲が割り当てられる
 - 例：ユーザーA（UID 1000）はポート 11000、14000、40000-40100を使用
 - 例：ユーザーB（UID 1001）はポート 11001、14001、40200-40300を使用
 
@@ -1028,7 +1028,7 @@ USER_PASSWORD=user1pass ./build-user-image.sh
 USER_PASSWORD=user2pass ./build-user-image.sh
 ```
 
-各ユーザーはユーザー名とUID/GIDに一致する独自のタグ付きイメージを取得します：
+各ユーザーはユーザー名とUID/GIDに一致する独自のタグ付きイメージをビルドします：
 - イメージ：`devcontainer-ubuntu-egl-desktop-{username}:24.04`
 - コンテナ：`devcontainer-egl-desktop-{username}`
 
