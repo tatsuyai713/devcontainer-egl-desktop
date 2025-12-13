@@ -172,10 +172,10 @@ IN_LOCALE=JP ./build-user-image.sh # Mozc入力付き日本語環境
 # 3. コンテナを起動
 ./start-container.sh                      # ソフトウェアレンダリング（GPUなし）、Selkiesモード
 ./start-container.sh --gpu nvidia --all            # すべてのGPU（NVIDIA）、Selkiesモード
-./start-container.sh -g intel             # Intel統合GPU、Selkiesモード
+./start-container.sh --gpu intel             # Intel統合GPU、Selkiesモード
 ./start-container.sh --gpu amd            # AMD GPU、Selkiesモード
 ./start-container.sh --gpu nvidia --all --vnc      # NVIDIA GPUでKasmVNCモード
-./start-container.sh -g intel -v          # Intel GPUでKasmVNCモード
+./start-container.sh --gpu intel -v          # Intel GPUでKasmVNCモード
 ./start-container.sh --gpu nvidia --num 0 -v              # NVIDIA GPU 0でKasmVNC
 # 注：--gpuを指定しない場合はソフトウェアレンダリングがデフォルト
 # 注：キーボードレイアウトはホストシステムから自動検出されます
@@ -397,7 +397,7 @@ docker build \
 
 # Intel/AMD GPUオプション：
 ./start-container.sh --gpu intel          # Intel統合GPU（Quick Sync Video）を使用
-./start-container.sh -g amd               # AMD GPU（VCE/VCN）を使用
+./start-container.sh --gpu amd               # AMD GPU（VCE/VCN）を使用
 
 # ソフトウェアレンダリング：
 ./start-container.sh                      # GPUなし（ソフトウェアレンダリング、デフォルト）
@@ -405,14 +405,14 @@ docker build \
 
 # ディスプレイモードオプション：
 ./start-container.sh --gpu nvidia --all            # Selkies GStreamer（WebRTC、デフォルト）
-./start-container.sh -g intel --vnc       # Intel GPUでKasmVNC（WebSocket経由のVNC）
+./start-container.sh --gpu intel --vnc       # Intel GPUでKasmVNC（WebSocket経由のVNC）
 ./start-container.sh --gpu nvidia --all -v         # NVIDIA GPUでKasmVNC
 ./start-container.sh -v                   # ソフトウェアレンダリングでKasmVNC
 
 # キーボードレイアウトのオーバーライド（デフォルトは自動検出）：
-KEYBOARD_LAYOUT=jp ./start-container.sh -g intel        # 日本語キーボード
+KEYBOARD_LAYOUT=jp ./start-container.sh --gpu intel        # 日本語キーボード
 KEYBOARD_LAYOUT=us ./start-container.sh --gpu intel    # USキーボード
-KEYBOARD_LAYOUT=de KEYBOARD_MODEL=pc105 ./start-container.sh -g all  # ドイツ語キーボード
+KEYBOARD_LAYOUT=de KEYBOARD_MODEL=pc105 ./start-container.sh --gpu all  # ドイツ語キーボード
 ```
 
 **UIDベースのポート割り当て（マルチユーザーサポート）：**
@@ -468,15 +468,15 @@ SelkiesとKasmVNCを切り替える必要がある場合：
 ```bash
 # 方法1：削除して再作成
 ./stop-container.sh rm
-./start-container.sh -g intel --vnc # KasmVNCに切り替え
+./start-container.sh --gpu intel --vnc # KasmVNCに切り替え
 
 # 方法2：コミット、削除、再作成
 ./commit-container.sh              # まず変更を保存
 ./stop-container.sh rm
-./start-container.sh -g intel      # Selkiesに切り替え
+./start-container.sh --gpu intel      # Selkiesに切り替え
 
 # 方法3：コミットして自動再起動
-./commit-container.sh restart -g intel --vnc  # 保存してKasmVNCに切り替え
+./commit-container.sh restart --gpu intel --vnc  # 保存してKasmVNCに切り替え
 ```
 
 startスクリプトはモードの不一致を検出し、手順付きの役立つエラーメッセージを表示します。
@@ -724,7 +724,7 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 - ✅ **音声ストリーミング対応：** WebRTC経由でリモートブラウザクライアントに音声が転送される
 
 ```bash
-./start-container.sh -g all       # デフォルトでSelkiesを使用
+./start-container.sh --gpu all       # デフォルトでSelkiesを使用
 ```
 
 **KasmVNC：**
@@ -736,7 +736,7 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 - 音声をリモートクライアントに転送する場合は、代わりにSelkiesモードを使用してください
 
 ```bash
-./start-container.sh -g all --vnc # KasmVNCモードを有効化
+./start-container.sh --gpu nvidia --all --vnc # KasmVNCモードを有効化
 ```
 
 ---
@@ -923,15 +923,15 @@ setxkbmap -layout jp -model jp106 -query
 
 ```bash
 # オプション1：現在のモードを維持
-./start-container.sh -g intel  # 元のモードを使用
+./start-container.sh --gpu intel  # 元のモードを使用
 
 # オプション2：変更を保存して再作成
 ./commit-container.sh          # まず変更を保存！
 ./stop-container.sh rm         # コンテナを削除
-./start-container.sh -g intel --vnc  # 新しいモードで再作成
+./start-container.sh --gpu intel --vnc  # 新しいモードで再作成
 
 # オプション3：ワンステップでコミットと再作成
-./commit-container.sh restart -g intel --vnc
+./commit-container.sh restart --gpu intel --vnc
 ```
 
 **なぜモードを変更できないのか？**

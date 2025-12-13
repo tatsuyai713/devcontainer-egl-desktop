@@ -43,10 +43,6 @@ show_usage() {
 while [[ $# -gt 0 ]]; do
     case $1 in
         -g|--gpu)
-            # Deprecation warning for short option
-            if [ "$1" = "-g" ]; then
-                echo "Warning: -g is deprecated; use --gpu instead."
-            fi
             if [ -z "$2" ]; then
                 echo "Error: --gpu requires an argument (nvidia|intel|amd|none)"
                 exit 1

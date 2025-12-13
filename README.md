@@ -635,7 +635,7 @@ DISPLAY_HEIGHT=1080       # Height in pixels
 DISPLAY_REFRESH=60        # Refresh rate in Hz
 DISPLAY_DPI=96            # DPI setting
 
-./start-container.sh -g all
+./start-container.sh --gpu nvidia --all
 ```
 
 ### Video Encoding
@@ -650,7 +650,7 @@ FRAMERATE=60              # FPS
 VIDEO_ENCODER=x264enc     # H.264 software
 VIDEO_BITRATE=4000        # Lower bitrate for CPU
 
-./start-container.sh -g all
+./start-container.sh --gpu all
 ```
 
 **Available encoders:**
@@ -665,7 +665,7 @@ VIDEO_BITRATE=4000        # Lower bitrate for CPU
 
 ```bash
 AUDIO_BITRATE=128000      # Audio bitrate in bps (default: 128000)
-./start-container.sh -g all
+./start-container.sh --gpu nvidia --all
 ```
 
 ### Keyboard Settings
@@ -717,7 +717,7 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 - ✅ **Audio streaming supported:** Audio is streamed to remote browser clients via WebRTC
 
 ```bash
-./start-container.sh -g all       # Uses Selkies by default
+./start-container.sh --gpu nvidia --all       # Uses Selkies by default
 ```
 
 **KasmVNC:**
@@ -729,7 +729,7 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 - For audio streaming to remote clients, use Selkies mode instead
 
 ```bash
-./start-container.sh -g all --vnc # Activates KasmVNC mode
+./start-container.sh --gpu nvidia --all --vnc # Activates KasmVNC mode
 ```
 
 ---
@@ -743,7 +743,7 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 ./generate-ssl-cert.sh
 
 # 2. Start container (auto-detects ssl/ folder)
-./start-container.sh -g all
+./start-container.sh --gpu nvidia --all
 ```
 
 The script will:
@@ -767,7 +767,7 @@ The `start-container.sh` script auto-detects certificates in this order:
 ```bash
 CERT_PATH=/path/to/cert.pem \
   KEY_PATH=/path/to/key.pem \
-  ./start-container.sh -g all
+  ./start-container.sh --gpu nvidia --all
 ```
 
 ### Manual Certificate Generation
@@ -800,7 +800,7 @@ docker images | grep devcontainer-ubuntu-egl-desktop-base
 sudo netstat -tulpn | grep 8080
 
 # Use a different port
-HTTPS_PORT=8081 ./start-container.sh -g all
+HTTPS_PORT=8081 ./start-container.sh --gpu nvidia --all
 ```
 
 ### GPU Not Detected
@@ -887,7 +887,7 @@ cat /etc/default/keyboard
 
 # Override with correct layout
 ./stop-container.sh rm
-KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh -g intel
+KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh --gpu intel
 ```
 
 **For Japanese keyboards specifically:**
@@ -916,15 +916,15 @@ This is expected behavior. Display mode (Selkies/KasmVNC) cannot be changed for 
 
 ```bash
 # Option 1: Keep current mode
-./start-container.sh -g intel  # Use the original mode
+./start-container.sh --gpu intel  # Use the original mode
 
 # Option 2: Save changes and recreate
 ./commit-container.sh          # Save changes first!
 ./stop-container.sh rm         # Remove container
-./start-container.sh -g intel --vnc  # Recreate with new mode
+./start-container.sh --gpu intel --vnc  # Recreate with new mode
 
 # Option 3: One-step commit and recreate
-./commit-container.sh restart -g intel --vnc
+./commit-container.sh restart --gpu intel --vnc
 ```
 
 **Why can't I change the mode?**
@@ -1023,7 +1023,7 @@ docker-compose -f docker-compose.user.yml down
 **AMD/Intel GPUs:**
 
 ```bash
-VIDEO_ENCODER=vah264enc ./start-container.sh -g intel
+VIDEO_ENCODER=vah264enc ./start-container.sh --gpu intel
 ```
 
 **Software Rendering (No GPU):**
