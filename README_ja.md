@@ -108,14 +108,13 @@ NVIDIA GPU用のOpenGL EGL/GLX、VulkanをWebRTCとHTML5でサポートするKub
 
 | オリジナルプロジェクト | このフォーク |
 |-----------------|-----------|
-| 30〜60分のビルド | 1〜2分のビルド |
+| Pullするだけで使用可能 | ローカルビルド（1〜2分）|
 | rootコンテナ | ユーザー権限コンテナ |
 | 手動UID/GID設定 | 自動一致 |
 | コマンドにパスワード | インタラクティブな安全入力 |
 | 汎用bash | Ubuntu Desktop bash |
 | GPU自動検出 | GPU明示的選択 |
 | バージョンドリフト | バージョン固定 |
-| 単一ストリーミングモード | デュアルモード（Selkies/KasmVNC）|
 | 手動SSL設定 | 自動検出+ジェネレーター |
 | 単一ユーザー重視 | マルチユーザー最適化 |
 | 英語のみ | 多言語（EN/JP）|
@@ -302,49 +301,43 @@ docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:latest
 docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04
 ```
 
+
 ### 2. ユーザーイメージをビルド
 
-これにより、一致するUID/GIDを持つ個人用イメージが作成されます：
+ホストのUID/GIDに一致する個人用イメージを作成します：
 
 ```bash
+# 英語環境（デフォルト）
 ./build-user-image.sh
+# 日本語環境
+./build-user-image.sh JP
 ```
 
-これにより：
+実行時にパスワードが2回プロンプトされ、約1〜2分でビルドが完了します。
 
-- 事前ビルドされたベースイメージをプル（まだ利用できない場合）
-- パスワードを設定するようプロンプトが表示される（セキュリティのため入力は隠される）
-- ホストのUID/GIDに一致するユーザー固有のイメージを作成
-- 約1〜2分かかる
-
-**パスワード設定：**
-
-- 確認のためにパスワードを2回入力するよう求められる
-- パスワードはビルド中にイメージに安全に保存される
-- コンテナを起動する際にパスワードを指定する必要なし
-
-**環境変数：**
+**補足：自動化やカスタマイズ用の環境変数例**
 
 ```bash
-# 特定のベースイメージバージョンを使用
+# ベースイメージのバージョン指定
 BASE_IMAGE_TAG=v1.0 ./build-user-image.sh
-
-# 環境変数でパスワードを設定（自動化用）
+# パスワード自動指定（自動化用）
 USER_PASSWORD=mysecurepassword ./build-user-image.sh
-
 # キャッシュなしでビルド
 NO_CACHE=true ./build-user-image.sh
+```
 
-# 別のユーザー用にビルド
+**高度なカスタムビルド例（複数ユーザー用）**
+
+```bash
 docker build \
-    --build-arg BASE_IMAGE=ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04 \
-    --build-arg USER_NAME=johndoe \
-    --build-arg USER_UID=1001 \
-    --build-arg USER_GID=1001 \
-    --build-arg USER_PASSWORD=johnspassword \
-    -f files/Dockerfile.user \
-    -t devcontainer-ubuntu-egl-desktop-johndoe:24.04 \
-    .
+  --build-arg BASE_IMAGE=ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04 \
+  --build-arg USER_NAME=johndoe \
+  --build-arg USER_UID=1001 \
+  --build-arg USER_GID=1001 \
+  --build-arg USER_PASSWORD=johnspassword \
+  -f files/Dockerfile.user \
+  -t devcontainer-ubuntu-egl-desktop-johndoe:24.04 \
+  .
 ```
 
 ---

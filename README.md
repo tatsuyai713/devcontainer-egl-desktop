@@ -110,14 +110,13 @@ This repository is an enhanced fork of the original Selkies EGL Desktop project,
 
 | Original Project | This Fork |
 |-----------------|-----------|
-| 30-60 minute build | 1-2 minute build |
+| Pull-ready image | Local build (1-2 min) |
 | Root container | User-privilege container |
 | Manual UID/GID setup | Automatic matching |
 | Password in command | Interactive secure input |
 | Generic bash | Ubuntu Desktop bash |
 | GPU auto-detected | GPU explicitly selected |
 | Version drift | Version pinned |
-| Single streaming mode | Dual mode (Selkies/KasmVNC) |
 | Manual SSL setup | Auto-detection + generator |
 | Single user focused | Multi-user optimized |
 | English only | Multi-language (EN/JP) |
@@ -309,44 +308,39 @@ docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04
 This creates your personal image with matching UID/GID:
 
 ```bash
+# English (default)
 ./build-user-image.sh
+# Japanese
+./build-user-image.sh JP
 ```
 
-This will:
+The build will prompt for a password (entered twice) and completes in about 1–2 minutes.
 
-- Pull the pre-built base image (if not already available)
-- Prompt you to set a password (input is hidden for security)
-- Create a user-specific image matching your host UID/GID
-- Take about 1-2 minutes
-
-**Password Setup:**
-
-- You'll be asked to enter a password twice for confirmation
-- The password is securely stored in the image during build
-- No need to specify password when starting containers
-
-**Environment Variables:**
+**Optional: automation / customization examples**
 
 ```bash
 # Use a specific base image version
 BASE_IMAGE_TAG=v1.0 ./build-user-image.sh
 
-# Set password via environment (for automation)
+# Provide password via environment (automation)
 USER_PASSWORD=mysecurepassword ./build-user-image.sh
 
 # Build without cache
 NO_CACHE=true ./build-user-image.sh
+```
 
-# Build for a different user
+**Advanced: custom build for another user**
+
+```bash
 docker build \
-    --build-arg BASE_IMAGE=ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04 \
-    --build-arg USER_NAME=johndoe \
-    --build-arg USER_UID=1001 \
-    --build-arg USER_GID=1001 \
-    --build-arg USER_PASSWORD=johnspassword \
-    -f files/Dockerfile.user \
-    -t devcontainer-ubuntu-egl-desktop-johndoe:24.04 \
-    .
+  --build-arg BASE_IMAGE=ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04 \
+  --build-arg USER_NAME=johndoe \
+  --build-arg USER_UID=1001 \
+  --build-arg USER_GID=1001 \
+  --build-arg USER_PASSWORD=johnspassword \
+  -f files/Dockerfile.user \
+  -t devcontainer-ubuntu-egl-desktop-johndoe:24.04 \
+  .
 ```
 
 ---
