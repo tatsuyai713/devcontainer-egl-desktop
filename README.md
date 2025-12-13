@@ -1,5 +1,7 @@
 # docker-selkies-egl-desktop
 
+**[日本語版 (Japanese)](README_ja.md)**
+
 KDE Plasma Desktop container designed for Kubernetes, supporting OpenGL EGL and GLX, Vulkan for NVIDIA GPUs through WebRTC and HTML5, providing an open-source remote cloud/HPC graphics or game streaming platform.
 
 ---
