@@ -947,6 +947,12 @@ This is expected behavior. Display mode (Selkies/KasmVNC) cannot be changed for 
 - Selkies enables HTTP Basic authentication by default. Safari does not resend credentials when upgrading to WebSocket/WebRTC endpoints (`/ws`, `/webrtc/signalling`), so each 401 response triggers the login dialog again and the page never loads.  
 - Workarounds: disable Basic auth (`SELKIES_ENABLE_BASIC_AUTH=false` before `start-container.sh`), use Chrome/Firefox/Edge, or place Selkies behind another reverse proxy that handles authentication.
 
+### Vulkan apps cannot present frames
+
+- Selkies runs the KDE desktop under Xvfb + VirtualGL; there is no real Xorg/DRI3 backend inside the container. Vulkan applications therefore cannot find a graphics+present queue combination and exit with `No DRI3 support detected`.  
+- Vulkan's presentation requires DRI3/DRM and a real display server, which is outside the scope of the Selkies EGL pipeline.  
+- Workarounds: run Vulkan workloads directly on the host or in a container attached to an actual Xorg session (e.g., KasmVNC/GLX mode), but not inside the WebRTC Selkies session.
+
 ### Rebuilding Images
 
 ```bash

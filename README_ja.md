@@ -954,6 +954,12 @@ setxkbmap -layout jp -model jp106 -query
 - Selkies ではデフォルトで HTTP Basic 認証が有効です。Safari は WebSocket/WebRTC へのアップグレード時に `Authorization` ヘッダーを再送しないため、`/webrtc/signalling` などで 401 が返されるたびに macOS のログインダイアログが再表示されて先へ進めません。  
 - 回避策：`SELKIES_ENABLE_BASIC_AUTH=false` を指定して Basic 認証を無効化する、Chrome/Firefox など別ブラウザを使用する、あるいは Selkies の前段に別のプロキシを置いて認証処理を代替させる。
 
+### Vulkan アプリはフレームを表示できない
+
+- Selkies はコンテナ内で Xvfb + VirtualGL によって KDE デスクトップを実行しており、実際の Xorg/DRI3 バックエンドが存在しません。そのため Vulkan アプリは `No DRI3 support detected` などを出して graphics/present 両方を兼ねるキューを見つけられず終了します。  
+- Vulkan のプレゼンテーションには DRI3/DRM と実ディスプレイサーバが必須で、Selkies EGL パイプラインの対象外です。  
+- 回避策：Vulkan ワークロードはホスト上で直接実行するか、実際の Xorg セッションに接続されたコンテナ（KasmVNC/GLX モードなど）で実行してください。WebRTC Selkies セッション内では動作しません。
+
 ### イメージの再ビルド
 
 ```bash
