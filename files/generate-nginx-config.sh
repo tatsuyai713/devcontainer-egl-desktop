@@ -59,6 +59,9 @@ http {
         
         ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
         ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
+        
+        # NGINX Basic Authentication (unified authentication for all KasmVNC access)
+$(if [ "$(echo ${SELKIES_ENABLE_BASIC_AUTH:-true} | tr '[:upper:]' '[:lower:]')" != "false" ]; then echo "        auth_basic \"Selkies\";"; echo "        auth_basic_user_file ${XDG_RUNTIME_DIR}/.htpasswd;"; fi)
     
     # KasmVNC audio WebSocket endpoint (kasmbins) - must be before / location
     location /kasmaudio/ {
