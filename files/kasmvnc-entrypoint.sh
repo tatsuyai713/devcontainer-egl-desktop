@@ -31,7 +31,10 @@ export PULSE_SERVER="${PULSE_SERVER:-unix:${PULSE_RUNTIME_PATH:-${XDG_RUNTIME_DI
 
 # Configure KasmVNC
 mkdir -pm700 ~/.vnc
-(echo "${SELKIES_BASIC_AUTH_PASSWORD:-${PASSWD}}"; echo "${SELKIES_BASIC_AUTH_PASSWORD:-${PASSWD}}";) | kasmvncpasswd -u "${SELKIES_BASIC_AUTH_USER:-${USER}}" -ow ~/.kasmpasswd
+# Use pre-generated .kasmpasswd file from image build (already contains hashed password)
+if [ ! -f ~/.kasmpasswd ]; then
+    echo "Warning: ~/.kasmpasswd not found, KasmVNC authentication may not work"
+fi
 touch ~/.vnc/.de-was-selected ~/.vnc/kasmvnc.yaml
 
 export KASMVNC_DISPLAY="${KASMVNC_DISPLAY:-:21}"
@@ -63,8 +66,15 @@ if [ "$(echo ${SELKIES_ENABLE_RESIZE} | tr '[:upper:]' '[:lower:]')" = "true" ];
 # Wait for X server to start
 echo 'Waiting for X Socket' && until [ -S "/tmp/.X11-unix/X${DISPLAY#*:}" ]; do sleep 0.5; done && echo 'X Server is ready'
 
-# Configure NGINX
-if [ "$(echo ${SELKIES_ENABLE_BASIC_AUTH} | tr '[:upper:]' '[:lower:]')" != "false" ]; then htpasswd -bcm "${XDG_RUNTIME_DIR}/.htpasswd" "${SELKIES_BASIC_AUTH_USER:-${USER}}" "${SELKIES_BASIC_AUTH_PASSWORD:-${PASSWD}}"; fi
+# Configure NGINX - use pre-generated htpasswd file
+if [ "$(echo ${SELKIES_ENABLE_BASIC_AUTH} | tr '[:upper:]' '[:lower:]')" != "false" ]; then
+    # Use pre-generated htpasswd file from image build
+    if [ -f /etc/.htpasswd ]; then
+        cp /etc/.htpasswd "${XDG_RUNTIME_DIR}/.htpasswd"
+    else
+        echo "Warning: /etc/.htpasswd not found, NGINX Basic Auth will not work"
+    fi
+fi
 
 # Write NGINX config to user-writable location first
 mkdir -p "${XDG_RUNTIME_DIR}/nginx" 2>/dev/null
@@ -170,11 +180,11 @@ clip_mirror() {
 
 ensure_xclip
 
-# 双方向（CLIPBOARD）
-clip_mirror "$KASMVNC_DISPLAY" "$DISPLAY" clipboard &  # ブラウザ→アプリ側
-clip_mirror "$DISPLAY" "$KASMVNC_DISPLAY" clipboard &  # アプリ側→ブラウザ
+# ????CLIPBOARD?
+clip_mirror "$KASMVNC_DISPLAY" "$DISPLAY" clipboard &  # ?????????
+clip_mirror "$DISPLAY" "$KASMVNC_DISPLAY" clipboard &  # ?????????
 
-# 必要なら PRIMARY も（Linuxの「選択しただけコピー」も同期したい場合）
+# ???? PRIMARY ??Linux?????????????????????
 clip_mirror "$DISPLAY" "$KASMVNC_DISPLAY" primary &
 clip_mirror "$KASMVNC_DISPLAY" "$DISPLAY" primary &
 
