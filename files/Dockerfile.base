@@ -9,6 +9,8 @@ ARG SELKIES_VERSION=1.6.2
 ARG NVIDIA_VAAPI_DRIVER_VERSION=0.0.14
 ARG RUSTDESK_VERSION=1.4.4
 ARG NOVNC_VERSION=1.3.0
+ARG KCLIENT_VERSION=0.4.1
+ARG KASMBINS_RELEASE=1.15.0
 
 # Supported base images: Ubuntu 24.04, 22.04, 20.04
 ARG DISTRIB_IMAGE=ubuntu
@@ -24,6 +26,8 @@ ARG SELKIES_VERSION
 ARG NVIDIA_VAAPI_DRIVER_VERSION
 ARG RUSTDESK_VERSION
 ARG NOVNC_VERSION
+ARG KCLIENT_VERSION
+ARG KASMBINS_RELEASE
 
 LABEL maintainer="https://github.com/tatsuyai713"
 
@@ -325,6 +329,35 @@ RUN cd /tmp && VIRTUALGL_VERSION="$(echo ${VIRTUALGL_VERSION} | sed 's/[^0-9\.\-
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
 
 # Anything below this line should always be kept the same between docker-selkies-glx-desktop and docker-selkies-egl-desktop
+
+# Install ffmpeg and PulseAudio for kasmbins audio support
+RUN apt-get update && apt-get install --no-install-recommends -y \
+        ffmpeg \
+        libpulse-dev && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
+
+# Install Node.js 20.x and kclient for audio support following LinuxServer approach
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get update && apt-get install --no-install-recommends -y \
+        nodejs \
+        npm \
+        build-essential && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
+
+# Build and install kclient
+RUN mkdir -p /kclient && \
+    echo "precedence ::ffff:0:0/96  100" >> /etc/gai.conf && \
+    if [ -z "${KCLIENT_VERSION}" ]; then \
+        KCLIENT_VERSION=$(curl -sX GET "https://api.github.com/repos/linuxserver/kclient/releases/latest" | awk '/tag_name/{print $4;exit}' FS='[""]'); \
+    fi && \
+    curl -o /tmp/kclient.tar.gz -L "https://github.com/linuxserver/kclient/archive/${KCLIENT_VERSION}.tar.gz" && \
+    tar xf /tmp/kclient.tar.gz -C /kclient/ --strip-components=1 && \
+    cd /kclient && \
+    sed -i 's/"(\^\\|~\\|>=\\|<=\\|>\\|<)/"/g' package.json && \
+    sed -i 's/http\.listen(6900);/http.listen(process.env.PORT || 6900);/' index.js && \
+    npm install --omit=dev && \
+    rm -f package-lock.json && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
 
 # Install KDE and other GUI packages
 RUN mkdir -pm755 /etc/apt/preferences.d && echo "Package: firefox*\n\
@@ -657,17 +690,37 @@ RUN KASMVNC_VERSION="$(echo ${KASMVNC_VERSION} | sed 's/[^0-9\.\-]*//g')" && \
     cd /tmp && curl -o yq -fsSL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_$(dpkg --print-architecture)" && install ./yq /usr/bin/ && rm -f yq && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
 
-# Apply KasmVNC autoconnect patch - redirect to URL with autoconnect and resize parameters
-# Only patch index.html as it's the file actually served by KasmVNC
-RUN python3 -c 'import sys; \
-content = open("/usr/share/kasmvnc/www/index.html", "r").read(); \
-script = "<script>(function(){var s=window.location.search;if(!s||s===\"?\"){window.location.replace(window.location.pathname+\"?autoconnect=1&resize=scale\");}})()</script>"; \
-content = content.replace("<head>", "<head>" + script, 1); \
-open("/usr/share/kasmvnc/www/index.html", "w").write(content); \
-print("✓ KasmVNC autoconnect patch applied")'
+# Install kasmbins for audio support
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y \
+        g++ \
+        gcc \
+        libpam0g-dev \
+        libpulse-dev \
+        make \
+        pulseaudio \
+        pulseaudio-utils && \
+    mkdir -p /var/run/pulse && \
+    mkdir -p /kasmbins && \
+    echo "Downloading kasmbins from https://kasm-ci.s3.amazonaws.com/kasmbins-amd64-${KASMBINS_RELEASE}.tar.gz" && \
+    curl -L -v -o /tmp/kasmbins.tar.gz https://kasm-ci.s3.amazonaws.com/kasmbins-amd64-${KASMBINS_RELEASE}.tar.gz && \
+    echo "Download completed. File info:" && \
+    ls -la /tmp/kasmbins.tar.gz && \
+    file /tmp/kasmbins.tar.gz && \
+    echo "Extracting kasmbins..." && \
+    tar -xzf /tmp/kasmbins.tar.gz -C /kasmbins/ && \
+    echo "Extraction completed. Contents:" && \
+    ls -la /kasmbins/ && \
+    rm -f /tmp/kasmbins.tar.gz && \
+    chmod +x /kasmbins/* && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
 
 ENV PATH="${PATH:+${PATH}:}/usr/lib/rustdesk"
 ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/lib/rustdesk/lib"
+# PulseAudio configuration for audio support
+ENV PULSE_RUNTIME_PATH="/defaults"
+ENV PULSE_LATENCY_MSEC="30"
+ENV PULSEAUDIO_FRAGMENT_SIZE="2000"
 
 # Add custom packages right below this comment, or use FROM in a new container and replace entrypoint.sh or supervisord.conf, and set ENTRYPOINT to /usr/bin/supervisord
 
@@ -718,6 +771,15 @@ COPY files/novnc-entrypoint.sh /etc/novnc-entrypoint.sh
 RUN chmod 755 /etc/novnc-entrypoint.sh
 
 RUN sed -i '/<head>/a <script>if (window.location.search === "" || window.location.search === "?") { window.location.replace(window.location.pathname + "?autoconnect=1&resize=scale"); }</script>' /opt/noVNC/vnc.html
+
+COPY files/kasmvnc-audio-entrypoint.sh /etc/kasmvnc-audio-entrypoint.sh
+RUN chmod 755 /etc/kasmvnc-audio-entrypoint.sh
+
+COPY files/kclient-entrypoint.sh /etc/kclient-entrypoint.sh
+RUN chmod 755 /etc/kclient-entrypoint.sh
+
+COPY files/generate-nginx-config.sh /etc/generate-nginx-config.sh
+RUN chmod 755 /etc/generate-nginx-config.sh
 
 COPY files/supervisord.conf /etc/supervisord.conf
 RUN chmod 755 /etc/supervisord.conf

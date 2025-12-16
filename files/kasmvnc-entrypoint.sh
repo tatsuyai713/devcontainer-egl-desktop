@@ -9,6 +9,16 @@ set -e
 # Wait for XDG_RUNTIME_DIR
 until [ -d "${XDG_RUNTIME_DIR}" ]; do sleep 0.5; done
 
+# Remove sites-enabled symlink if it exists (KasmVNC mode doesn't use it)
+# This prevents conflicts if the container was previously run in Selkies mode and committed
+if [ -L /etc/nginx/sites-enabled/default ]; then
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+  elif [ -w /etc/nginx/sites-enabled/default ]; then
+    rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+  fi
+fi
+
 # Set default display
 # Use DISPLAY from environment (set per-user in Dockerfile.user)
 export DISPLAY="${DISPLAY}"
@@ -54,7 +64,17 @@ if [ "$(echo ${SELKIES_ENABLE_RESIZE} | tr '[:upper:]' '[:lower:]')" = "true" ];
 echo 'Waiting for X Socket' && until [ -S "/tmp/.X11-unix/X${DISPLAY#*:}" ]; do sleep 0.5; done && echo 'X Server is ready'
 
 # Configure NGINX
-if [ "$(echo ${SELKIES_ENABLE_BASIC_AUTH} | tr '[:upper:]' '[:lower:]')" != "false" ]; then htpasswd -bcm "${XDG_RUNTIME_DIR}/.htpasswd" "${SELKIES_BASIC_AUTH_USER:-${USER}}" "${SELKIES_BASIC_AUTH_PASSWORD:-${PASSWD}}"; fi
+# Note: For KasmVNC, we use NGINX Basic Auth only and disable KasmVNC's built-in authentication
+# This provides a unified authentication experience across all browsers
+if [ "$(echo ${SELKIES_ENABLE_BASIC_AUTH} | tr '[:upper:]' '[:lower:]')" != "false" ]; then 
+    # Use pre-generated htpasswd file from image build
+    if [ -f /etc/.htpasswd ]; then
+        cp /etc/.htpasswd "${XDG_RUNTIME_DIR}/.htpasswd"
+    else
+        # Fallback: generate from environment variable if available
+        htpasswd -bcm "${XDG_RUNTIME_DIR}/.htpasswd" "${SELKIES_BASIC_AUTH_USER:-${USER}}" "${SELKIES_BASIC_AUTH_PASSWORD:-password}"
+    fi
+fi
 
 # Write NGINX config to user-writable location first
 mkdir -p "${XDG_RUNTIME_DIR}/nginx" 2>/dev/null
@@ -68,6 +88,7 @@ server {
     ssl_certificate_key ${SELKIES_HTTPS_KEY-/etc/ssl/private/ssl-cert-snakeoil.key};
     $(if [ \"$(echo ${SELKIES_ENABLE_BASIC_AUTH} | tr '[:upper:]' '[:lower:]')\" != \"false\" ]; then echo "auth_basic \"Selkies\";"; echo -n "    auth_basic_user_file ${XDG_RUNTIME_DIR}/.htpasswd;"; fi)
 
+    # KasmVNC WebSocket
     location / {
         proxy_set_header        Upgrade \$http_upgrade;
         proxy_set_header        Connection \"upgrade\";
@@ -98,6 +119,26 @@ elif [ -w /etc/nginx/sites-available/default ]; then
 else
   echo "Warning: Cannot write NGINX config to /etc/nginx. NGINX must be pre-configured or run with user permissions."
 fi
+
+# Start PulseAudio (via PipeWire-Pulse) if not already running
+if ! pgrep -x "pipewire-pulse" > /dev/null; then
+    echo "Starting PipeWire-Pulse for audio support..."
+    # PipeWire-Pulse should already be started by supervisord, but ensure it's ready
+    until [ -S "${XDG_RUNTIME_DIR}/pulse/native" ]; do sleep 0.5; done
+fi
+
+# Apply keyboard layout to main X server
+if [ -n "${KEYBOARD_LAYOUT}" ]; then
+    echo "Configuring keyboard: layout=${KEYBOARD_LAYOUT}, model=${KEYBOARD_MODEL:-pc105}${KEYBOARD_VARIANT:+, variant=${KEYBOARD_VARIANT}}"
+    if [ -n "${KEYBOARD_VARIANT}" ]; then
+        setxkbmap -display "${DISPLAY}" -layout "${KEYBOARD_LAYOUT}" -variant "${KEYBOARD_VARIANT}" -model "${KEYBOARD_MODEL:-pc105}" 2>/dev/null || echo "Warning: setxkbmap failed"
+    else
+        setxkbmap -display "${DISPLAY}" -layout "${KEYBOARD_LAYOUT}" -model "${KEYBOARD_MODEL:-pc105}" 2>/dev/null || echo "Warning: setxkbmap failed"
+    fi
+fi
+
+# Set KASMVNC_DISPLAY if not already set
+export KASMVNC_DISPLAY="${KASMVNC_DISPLAY:-:1}"
 
 # Run KasmVNC
 if ls ~/.vnc/*\:"${KASMVNC_DISPLAY#*:}".pid >/dev/null 2>&1; then kasmvncserver -kill "${KASMVNC_DISPLAY}"; fi

@@ -9,6 +9,10 @@ set -e
 # Wait for XDG_RUNTIME_DIR
 until [ -d "${XDG_RUNTIME_DIR}" ]; do sleep 0.5; done
 
+# Clean up nginx configuration from previous runs (in case container was committed)
+# This ensures a fresh nginx setup for Selkies mode
+rm -rf "${XDG_RUNTIME_DIR}/nginx" 2>/dev/null || true
+
 # Configure joystick interposer
 export SELKIES_INTERPOSER='/usr/$LIB/selkies_joystick_interposer.so'
 export LD_PRELOAD="${SELKIES_INTERPOSER}${LD_PRELOAD:+:${LD_PRELOAD}}"
@@ -126,7 +130,15 @@ EOF
 fi
 
 # Configure NGINX
-if [ "$(echo ${SELKIES_ENABLE_BASIC_AUTH} | tr '[:upper:]' '[:lower:]')" != "false" ]; then htpasswd -bcm "${XDG_RUNTIME_DIR}/.htpasswd" "${SELKIES_BASIC_AUTH_USER:-${USER}}" "${SELKIES_BASIC_AUTH_PASSWORD:-${PASSWD}}"; fi
+if [ "$(echo ${SELKIES_ENABLE_BASIC_AUTH} | tr '[:upper:]' '[:lower:]')" != "false" ]; then 
+    # Use pre-generated htpasswd file from image build
+    if [ -f /etc/.htpasswd ]; then
+        cp /etc/.htpasswd "${XDG_RUNTIME_DIR}/.htpasswd"
+    else
+        # Fallback: generate from environment variable if available
+        htpasswd -bcm "${XDG_RUNTIME_DIR}/.htpasswd" "${SELKIES_BASIC_AUTH_USER:-${USER}}" "${SELKIES_BASIC_AUTH_PASSWORD:-password}"
+    fi
+fi
 
 # Write NGINX config to user-writable location first
 mkdir -p "${XDG_RUNTIME_DIR}/nginx" 2>/dev/null
@@ -231,8 +243,12 @@ server {
 if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
   sudo cp "${XDG_RUNTIME_DIR}/nginx/default.conf" /etc/nginx/sites-available/default 2>/dev/null || \
     echo "Cannot write to /etc/nginx, using config from ${XDG_RUNTIME_DIR}/nginx/"
+  # Create sites-enabled symlink for Selkies mode
+  sudo ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default 2>/dev/null || true
 elif [ -w /etc/nginx/sites-available/default ]; then
   cp "${XDG_RUNTIME_DIR}/nginx/default.conf" /etc/nginx/sites-available/default
+  # Create sites-enabled symlink for Selkies mode
+  ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default 2>/dev/null || true
 else
   echo "Warning: Cannot write NGINX config to /etc/nginx. NGINX must be pre-configured or run with user permissions."
 fi
@@ -241,6 +257,7 @@ fi
 rm -rf "${HOME}/.cache/gstreamer-1.0"
 
 # Start the Selkies WebRTC HTML5 remote desktop application
+# Note: Basic authentication is handled by nginx, so Selkies itself should not require auth
 selkies-gstreamer \
     --addr="localhost" \
     --port="${SELKIES_PORT:-8081}" \

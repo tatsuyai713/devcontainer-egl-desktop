@@ -10,6 +10,12 @@ trap "echo TRAPed signal" HUP INT QUIT TERM
 
 # Wait for XDG_RUNTIME_DIR
 until [ -d "${XDG_RUNTIME_DIR}" ]; do sleep 0.5; done
+
+# Clean up runtime directory from previous runs (in case container was committed)
+# Keep the directory itself but remove all contents to ensure fresh state
+# This is critical for PulseAudio/PipeWire sockets, D-Bus, and other runtime files
+find "${XDG_RUNTIME_DIR}" -mindepth 1 -delete 2>/dev/null || echo 'Failed to clean XDG_RUNTIME_DIR, some files may persist'
+
 # Change operating system password to environment variable (requires sudo)
 if command -v sudo >/dev/null 2>&1; then
   (echo "${PASSWD}"; echo "${PASSWD}";) | sudo passwd "$(id -nu)" 2>/dev/null || echo 'Password change requires root privileges, skipping'

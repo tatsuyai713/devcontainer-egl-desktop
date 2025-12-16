@@ -246,7 +246,7 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         echo ""
         echo "Options:"
         echo "  1. Keep using Selkies mode: ./start-container.sh ${CURRENT_GPU_OPT}"
-        echo "  2. Delete and recreate with KasmVNC: ./stop-container.sh rm && ./start-container.sh ${CURRENT_GPU_OPT} --vnc"
+        echo "  2. Delete and recreate with KasmVNC: ./stop-container.sh rm && ./start-container.sh ${CURRENT_GPU_OPT} --vnc-type kasm"
         echo ""
         exit 1
     elif [ "${VNC_TYPE}" = "selkies" ] && [ "${EXISTING_KASMVNC}" = "true" ]; then
@@ -255,7 +255,7 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         echo "    Display mode cannot be changed for existing containers."
         echo ""
         echo "Options:"
-        echo "  1. Keep using KasmVNC mode: ./start-container.sh ${CURRENT_GPU_OPT} --vnc"
+        echo "  1. Keep using KasmVNC mode: ./start-container.sh ${CURRENT_GPU_OPT} --vnc-type kasm"
         echo "  2. Delete and recreate with Selkies: ./stop-container.sh rm && ./start-container.sh ${CURRENT_GPU_OPT}"
         echo ""
         exit 1
@@ -402,6 +402,13 @@ CMD="${CMD} -e SELKIES_AUDIO_BITRATE=${AUDIO_BITRATE}"
 # Display mode (Selkies, KasmVNC, or noVNC)
 CMD="${CMD} -e VNC_TYPE=${VNC_TYPE}"
 
+# Set KASMVNC_ENABLE based on VNC_TYPE
+if [ "${VNC_TYPE}" = "kasm" ]; then
+    CMD="${CMD} -e KASMVNC_ENABLE=true"
+else
+    CMD="${CMD} -e KASMVNC_ENABLE=false"
+fi
+
 # HTTPS configuration
 if [ "${ENABLE_HTTPS}" = "true" ]; then
     CMD="${CMD} -e SELKIES_ENABLE_HTTPS=true"
@@ -428,6 +435,23 @@ fi
 
 # Port mapping
 CMD="${CMD} -p ${HTTPS_PORT}:8080"
+
+# KasmVNC multi-user port mapping
+if [ "${VNC_TYPE}" = "kasm" ]; then
+    USER_UID_OFFSET=$((USER_UID % 1000))
+    KASM_WEBSOCKET_PORT=$((6900 + USER_UID_OFFSET))
+    KCLIENT_PORT=$((3000 + USER_UID_OFFSET))
+    KASMAUDIO_PORT=$((4900 + USER_UID_OFFSET))
+    NGINX_KASM_PORT=$((12000 + USER_UID_OFFSET))  # Use different port range to avoid HTTPS conflict
+    
+    echo "KasmVNC multi-user ports: WebSocket=${KASM_WEBSOCKET_PORT}, kclient=${KCLIENT_PORT}, audio=${KASMAUDIO_PORT}, nginx=${NGINX_KASM_PORT}"
+    
+    # Map KasmVNC specific ports
+    CMD="${CMD} -p ${KASM_WEBSOCKET_PORT}:${KASM_WEBSOCKET_PORT}"
+    CMD="${CMD} -p ${KCLIENT_PORT}:${KCLIENT_PORT}"
+    CMD="${CMD} -p ${KASMAUDIO_PORT}:${KASMAUDIO_PORT}"
+    CMD="${CMD} -p ${NGINX_KASM_PORT}:${NGINX_KASM_PORT}"
+fi
 
 # TURN server ports (Selkies mode only, for remote access)
 if [ "${ENABLE_TURN}" = "true" ] && [ "${VNC_TYPE}" = "selkies" ]; then
@@ -460,15 +484,19 @@ fi
 # Mount home directory as host_home and create user's home directory
 CMD="${CMD} -v ${HOME}:/home/$(whoami)/host_home"
 
-# Mount host PulseAudio socket for audio support (KasmVNC mode only)
-if [ "${VNC_TYPE}" = "kasm" ] && [ -S "/run/user/$(id -u)/pulse/native" ]; then
-    CMD="${CMD} -e PULSE_SERVER=unix:/tmp/pulse/native"
-    CMD="${CMD} -e PULSE_COOKIE=/tmp/pulse/cookie"
-    CMD="${CMD} -v /run/user/$(id -u)/pulse/native:/tmp/pulse/native"
-    if [ -f "${HOME}/.config/pulse/cookie" ]; then
-        CMD="${CMD} -v ${HOME}/.config/pulse/cookie:/tmp/pulse/cookie:ro"
+# Mount host PulseAudio socket for audio support (noVNC mode only)
+# noVNC does not have built-in audio support, so we mount host PulseAudio
+if [ "${VNC_TYPE}" = "novnc" ]; then
+    if [ -S "/run/user/$(id -u)/pulse/native" ]; then
+        CMD="${CMD} -e PULSE_SERVER=unix:/tmp/pulse-host/native"
+        CMD="${CMD} -v /run/user/$(id -u)/pulse:/tmp/pulse-host:ro"
+        echo "Mounting host PulseAudio socket for noVNC audio support"
+    elif [ -d "${HOME}/.pulse" ]; then
+        CMD="${CMD} -v ${HOME}/.pulse:/tmp/pulse-host:ro"
+        echo "Mounting host PulseAudio directory for noVNC audio support"
+    else
+        echo "Warning: Host PulseAudio socket not found, audio may not work in noVNC mode"
     fi
-    echo "Mounting host PulseAudio socket for KasmVNC audio support"
 fi
 
 # Image name

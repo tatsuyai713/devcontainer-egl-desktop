@@ -34,17 +34,6 @@ docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04
 # http://localhost:11000  （HTTPS有効時は https://localhost:11000）
 ```
 
-オートコンプリート（任意）:
-
-```bash
-# Bash: 補完スクリプトを読み込む
-source scripts/start-container-completion.bash
-
-# Zsh: scripts/_start-container を fpath にコピーし `compinit` を実行
-cp scripts/_start-container ~/.zfunc/_start-container
-autoload -U compinit && compinit
-```
-
 本来の Selkies EGL Desktop は Kubernetes を前提としたリモートデスクトップ基盤（GPUスケジューリングやマルチユーザー）です。  
 本フォークは *ローカル開発用途* に絞り、Devcontainer と同じ感覚で Selkies/KasmVNC デスクトップを立ち上げられるようにツール類やドキュメントを再構成しています。
 
@@ -90,10 +79,11 @@ autoload -U compinit && compinit
   - `0,1` - 特定のGPUデバイス
   - 誤ったGPU割り当てを防止
 
-- **🖥️ デュアルディスプレイモード:** ストリーミングプロトコルを選択
-  - **Selkies GStreamer（デフォルト）:** WebRTCで低遅延、ゲームに適している
-  - **KasmVNC:** WebSocket経由のVNC、互換性が高い、GPUなしで動作、クリップボード対応
-  - シンプルな`vnc`引数で切り替え
+- **🖥️ トリプルディスプレイモード:** ストリーミングプロトコルを選択
+  - **Selkies GStreamer（デフォルト）:** WebRTCで低遅延、音声/映像ストリーミング内蔵、ゲームに適している
+  - **KasmVNC:** kclient音声サポート付きWebSocket経由VNC、互換性が高い、GPUなしで動作、クリップボードと双方向音声（スピーカー/マイク）対応
+  - **noVNC:** ホスト音声パススルー付き基本VNC（ホストPulseAudio経由の音声出力のみ）、クリップボード対応
+  - `--vnc-type`または`-v`引数で切り替え
 
 - **🔐 SSL証明書管理:** 自動HTTPS設定
   - インタラクティブな証明書生成スクリプト
@@ -127,7 +117,7 @@ autoload -U compinit && compinit
   - 詳細な日本語ドキュメント（SCRIPTS.md）
 
 - **🌐 多言語サポート:** 日本語環境が利用可能
-  - ビルド時に`IN_LOCALE=JP`を設定すると日本語入力（Mozc）が有効になる
+  - ビルド時に`JP`引数を渡すと日本語入力（Mozc）が有効になる
   - 自動タイムゾーン（Asia/Tokyo）とロケール（ja_JP.UTF-8）設定
   - 日本でのより高速なダウンロードのためのRIKENミラーリポジトリ
   - fcitx入力メソッドフレームワークを含む
@@ -172,7 +162,7 @@ autoload -U compinit && compinit
 ```bash
 # 1. ユーザーイメージをビルド（パスワードがプロンプトされます）
 ./build-user-image.sh              # 英語環境（デフォルト）
-IN_LOCALE=JP ./build-user-image.sh # Mozc入力付き日本語環境
+./build-user-image.sh JP           # Mozc入力付き日本語環境
 
 # 2. SSL証明書を生成（オプション、HTTPS用）
 ./generate-ssl-cert.sh
@@ -193,7 +183,7 @@ IN_LOCALE=JP ./build-user-image.sh # Mozc入力付き日本語環境
 
 # 5. 変更を保存（コンテナを削除する前に重要！）
 ./commit-container.sh              # コンテナの状態をイメージに保存
-./commit-container.sh restart all  # 保存してすべてのGPUで再起動
+./commit-container.sh restart --gpu nvidia --all  # 保存してすべてのGPUで再起動
 
 # 6. コンテナを停止
 ./stop-container.sh                # 停止（コンテナは保持され、再起動可能）
@@ -202,7 +192,7 @@ IN_LOCALE=JP ./build-user-image.sh # Mozc入力付き日本語環境
 # 7. ディスプレイモードの切り替え（再作成が必要）
 ./commit-container.sh              # まず変更を保存！
 ./stop-container.sh rm             # コンテナを削除
-./start-container.sh intel vnc     # KasmVNCモードで再作成
+./start-container.sh --gpu intel --vnc-type kasm     # KasmVNCモードで再作成
 ```
 
 これだけです！🎉
@@ -476,7 +466,7 @@ SelkiesとKasmVNCを切り替える必要がある場合：
 ```bash
 # 方法1：削除して再作成
 ./stop-container.sh rm
-./start-container.sh --gpu intel --vnc # KasmVNCに切り替え
+./start-container.sh --gpu intel --vnc-type kasm # KasmVNCに切り替え
 
 # 方法2：コミット、削除、再作成
 ./commit-container.sh              # まず変更を保存
@@ -484,7 +474,7 @@ SelkiesとKasmVNCを切り替える必要がある場合：
 ./start-container.sh --gpu intel      # Selkiesに切り替え
 
 # 方法3：コミットして自動再起動
-./commit-container.sh restart --gpu intel --vnc  # 保存してKasmVNCに切り替え
+./commit-container.sh restart --gpu intel --vnc-type kasm  # 保存してKasmVNCに切り替え
 ```
 
 startスクリプトはモードの不一致を検出し、手順付きの役立つエラーメッセージを表示します。
@@ -494,19 +484,20 @@ startスクリプトはモードの不一致を検出し、手順付きの役立
 ```bash
 # HTTPSを使用
 ./generate-ssl-cert.sh
-./start-container.sh all
+./start-container.sh --gpu nvidia --all
 
 # 別のポートを使用
-HTTPS_PORT=9090 ./start-container.sh all
+HTTPS_PORT=9090 ./start-container.sh --gpu nvidia --all
 
 # 高解像度（4K）
-DISPLAY_WIDTH=3840 DISPLAY_HEIGHT=2160 ./start-container.sh all
+DISPLAY_WIDTH=3840 DISPLAY_HEIGHT=2160 ./start-container.sh --gpu nvidia --all
 
 # フォアグラウンドモード（ログを直接表示）
-DETACHED=false ./start-container.sh all
+DETACHED=false ./start-container.sh --gpu nvidia --all
 
 # カスタムコンテナ名
-CONTAINER_NAME=my-desktop ./start-container.sh all
+CONTAINER_NAME=my-desktop ./start-container.sh --gpu nvidia --all
+```
 ```
 
 ### コンテナの停止
@@ -524,7 +515,7 @@ CONTAINER_NAME=my-desktop ./start-container.sh all
 **コンテナの永続性：**
 - デフォルトでは、停止したコンテナは保持され、再起動できる
 - コンテナを完全に削除するには`rm`オプションを使用
-- 再起動：`./start-container.sh <gpu> [vnc]`
+- 再起動：`./start-container.sh [--gpu <type>] [--vnc-type <type>]`
 
 ---
 
@@ -534,8 +525,8 @@ CONTAINER_NAME=my-desktop ./start-container.sh all
 
 | スクリプト | 説明 | 使用方法 |
 |--------|-------------|-------|
-| `build-user-image.sh` | ユーザー固有のイメージをビルド | `./build-user-image.sh` または `IN_LOCALE=JP ./build-user-image.sh` |
-| `start-container.sh` | デスクトップコンテナを起動 | `./start-container.sh <gpu> [vnc]` |
+| `build-user-image.sh` | ユーザー固有のイメージをビルド | `./build-user-image.sh` または `./build-user-image.sh JP` |
+| `start-container.sh` | デスクトップコンテナを起動 | `./start-container.sh [--gpu <type>] [--vnc-type <type>]` |
 | `stop-container.sh` | コンテナを停止 | `./stop-container.sh [rm\|remove]` |
 | `generate-ssl-cert.sh` | 自己署名SSL証明書を生成 | `./generate-ssl-cert.sh` |
 
@@ -547,7 +538,7 @@ CONTAINER_NAME=my-desktop ./start-container.sh all
 | `logs-container.sh` | コンテナログを表示 | `./logs-container.sh` |
 | `shell-container.sh` | コンテナシェルにアクセス | `./shell-container.sh` |
 | `delete-image.sh` | ユーザー固有のイメージを削除 | `./delete-image.sh` |
-| `commit-container.sh` | コンテナの変更をイメージに保存 | `./commit-container.sh [restart [gpu]]` |
+| `commit-container.sh` | コンテナの変更をイメージに保存 | `./commit-container.sh [restart [--gpu <type>] [--vnc-type <type>]]` |
 
 詳細な日本語ドキュメントについては、[SCRIPTS.md](SCRIPTS.md)を参照してください。
 
@@ -582,10 +573,10 @@ AS_ROOT=true ./shell-container.sh
 ./commit-container.sh
 
 # 保存して自動的に再起動
-./commit-container.sh restart all      # すべてのNVIDIA GPUで再起動
-./commit-container.sh restart intel    # Intel GPUで再起動
-./commit-container.sh restart amd      # AMD GPUで再起動
-./commit-container.sh restart none vnc # VNCモードでGPUなしで再起動
+./commit-container.sh restart --gpu nvidia --all      # すべてのNVIDIA GPUで再起動
+./commit-container.sh restart --gpu intel    # Intel GPUで再起動
+./commit-container.sh restart --gpu amd      # AMD GPUで再起動
+./commit-container.sh restart --vnc-type kasm # VNCモードでGPUなしで再起動
 
 # カスタムタグで保存
 COMMIT_TAG=my-setup ./commit-container.sh
@@ -593,7 +584,7 @@ COMMIT_TAG=my-setup ./commit-container.sh
 # 保存したイメージを使用
 IMAGE_NAME=devcontainer-ubuntu-egl-desktop-$(whoami):my-setup \
   CONTAINER_NAME=my-desktop-2 \
-  ./start-container.sh all
+  ./start-container.sh --gpu nvidia --all
 ```
 
 **重要な注意事項：**
@@ -618,10 +609,10 @@ exit
 ./stop-container.sh rm
 
 # 4. 次回起動時にコミットされたイメージがすべての変更とともに使用される
-./start-container.sh intel
+./start-container.sh --gpu intel
 
 # 5. 保存した変更でディスプレイモードを切り替える：
-./commit-container.sh restart intel vnc  # 保存してKasmVNCに切り替え
+./commit-container.sh restart --gpu intel --vnc-type kasm  # 保存してKasmVNCに切り替え
 ```
 
 **イメージの削除：**
@@ -633,8 +624,11 @@ exit
 # 強制削除（関連するコンテナも削除）
 FORCE=true ./delete-image.sh
 
-# 特定のユーザーのイメージを削除
-IMAGE_TAG=username ./delete-image.sh
+# 特定のバージョンを削除
+IMAGE_TAG=my-setup ./delete-image.sh
+
+# 別のユーザーのイメージを削除
+IMAGE_NAME=devcontainer-ubuntu-egl-desktop-otheruser ./delete-image.sh
 ```
 
 ---
@@ -650,7 +644,7 @@ DISPLAY_HEIGHT=1080       # 高さ（ピクセル）
 DISPLAY_REFRESH=60        # リフレッシュレート（Hz）
 DISPLAY_DPI=96            # DPI設定
 
-./start-container.sh all
+./start-container.sh --gpu nvidia --all
 ```
 
 ### ビデオエンコーディング
@@ -665,7 +659,7 @@ FRAMERATE=60              # FPS
 VIDEO_ENCODER=x264enc     # H.264ソフトウェア
 VIDEO_BITRATE=4000        # CPUでより低いビットレート
 
-./start-container.sh all
+./start-container.sh --gpu nvidia --all
 ```
 
 **利用可能なエンコーダー：**
@@ -678,9 +672,45 @@ VIDEO_BITRATE=4000        # CPUでより低いビットレート
 
 ### オーディオ設定
 
+**ディスプレイモード別音声サポート:**
+
+| モード | 音声出力 | 音声入力（マイク） | 技術 |
+|------|-------------|-------------------------|------------|
+| **Selkies** | ✅ 内蔵 | ✅ 内蔵 | WebRTC（ブラウザネイティブ） |
+| **KasmVNC** | ✅ kclient | ✅ kclient | WebSocket + kasmbins音声システム |
+| **noVNC** | ✅ ホストパススルー | ❌ 非対応 | ホストPulseAudioをコンテナにマウント |
+
+**Selkies音声設定:**
+
 ```bash
-AUDIO_BITRATE=128000      # オーディオビットレート（bps）（デフォルト：128000）
-./start-container.sh all
+AUDIO_BITRATE=128000      # 音声ビットレート（bps）（デフォルト：128000）
+./start-container.sh --gpu nvidia --all
+```
+
+**KasmVNC音声（kclient）:**
+
+KasmVNCモードは双方向音声に[LinuxServer.ioのkclient](https://github.com/linuxserver/kclient)を使用します：
+- 音声サーバーはポート3000で動作（nginx経由でプロキシ）
+- VirtualSpeaker/VirtualMicデバイス付きPipeWire-Pulseを使用
+- WebSocket経由でブラウザからコンテナへの音声ストリーミング
+- 自動音声デバイス設定
+
+```bash
+./start-container.sh --gpu nvidia --all --vnc-type kasm
+# kclient Webインターフェースに音声コントロールが表示されます
+```
+
+**noVNC音声（ホストパススルー）:**
+
+noVNCモードは音声出力のためにホストPulseAudioソケットをマウントします：
+- コンテナアプリケーションはホストスピーカーから音声を再生
+- ホストでPulseAudioが実行されている必要があります：`/run/user/$(id -u)/pulse/native`
+- セキュリティのため読み取り専用マウント
+- このモードではマイク入力は非対応
+
+```bash
+./start-container.sh --gpu nvidia --all --vnc-type novnc
+# 音声は自動的にホストシステムから再生されます
 ```
 
 ### キーボード設定
@@ -697,18 +727,18 @@ AUDIO_BITRATE=128000      # オーディオビットレート（bps）（デフ�
 
 ```bash
 # キーボードレイアウトを手動で指定
-KEYBOARD_LAYOUT=jp ./start-container.sh intel              # 日本語キーボード
-KEYBOARD_LAYOUT=us ./start-container.sh intel              # USキーボード
-KEYBOARD_LAYOUT=de ./start-container.sh intel              # ドイツ語キーボード
+KEYBOARD_LAYOUT=jp ./start-container.sh --gpu intel              # 日本語キーボード
+KEYBOARD_LAYOUT=us ./start-container.sh --gpu intel              # USキーボード
+KEYBOARD_LAYOUT=de ./start-container.sh --gpu intel              # ドイツ語キーボード
 
 # キーボードモデル付き（非標準キーボード用）
-KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh intel  # 日本語106キー
+KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh --gpu intel  # 日本語106キー
 
 # キーボードバリアント付き
-KEYBOARD_LAYOUT=us KEYBOARD_VARIANT=dvorak ./start-container.sh all # Dvorakレイアウト
+KEYBOARD_LAYOUT=us KEYBOARD_VARIANT=dvorak ./start-container.sh --gpu nvidia --all # Dvorakレイアウト
 
 # 完全指定
-KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-container.sh intel
+KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-container.sh --gpu intel
 ```
 
 **一般的なキーボードモデル：**
@@ -732,7 +762,7 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 - ✅ **音声ストリーミング対応：** WebRTC経由でリモートブラウザクライアントに音声が転送される
 
 ```bash
-./start-container.sh --gpu all       # デフォルトでSelkiesを使用
+./start-container.sh --gpu nvidia --all       # デフォルトでSelkiesを使用
 ```
 
 **KasmVNC：**
@@ -740,11 +770,11 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 - WebSocket経由のVNCベースストリーミング
 - 互換性が高い
 - GPUなしで動作
-- ⚠️ **音声の制限：** ホストのPulseAudioを使用（ホストマシンでのみ音声出力、リモートブラウザには音声が転送されない）
-- 音声をリモートクライアントに転送する場合は、代わりにSelkiesモードを使用してください
+- ✅ **音声対応：** kclient WebSocketストリーミングによる双方向音声（スピーカー＋マイク）
+- クリップボード対応
 
 ```bash
-./start-container.sh --gpu nvidia --all --vnc # KasmVNCモードを有効化
+./start-container.sh --gpu nvidia --all --vnc-type kasm # KasmVNCモードを有効化
 ```
 
 ---
@@ -761,7 +791,7 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 sudo ./install-ca-cert.sh
 
 # 3. コンテナを起動（ssl/フォルダを自動検出）
-./start-container.sh all
+./start-container.sh --gpu nvidia --all
 ```
 
 このスクリプトは：
@@ -795,7 +825,7 @@ sudo ./install-ca-cert.sh
 ```bash
 CERT_PATH=/path/to/cert.pem \
   KEY_PATH=/path/to/key.pem \
-  ./start-container.sh all
+  ./start-container.sh --gpu nvidia --all
 ```
 
 ### 手動証明書生成
@@ -828,7 +858,7 @@ docker images | grep devcontainer-ubuntu-egl-desktop-base
 sudo netstat -tulpn | grep 8080
 
 # 別のポートを使用
-HTTPS_PORT=8081 ./start-container.sh all
+HTTPS_PORT=8081 ./start-container.sh --gpu nvidia --all
 ```
 
 ### GPUが検出されない
@@ -841,7 +871,7 @@ nvidia-smi
 docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
 
 # GPU問題が解決しない場合はソフトウェアレンダリングを使用
-./start-container.sh none
+./start-container.sh
 ```
 
 ### 権限の問題
@@ -915,7 +945,7 @@ cat /etc/default/keyboard
 
 # 正しいレイアウトでオーバーライド
 ./stop-container.sh rm
-KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh intel
+KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh --gpu intel
 ```
 
 **特に日本語キーボードの場合：**
@@ -949,10 +979,10 @@ setxkbmap -layout jp -model jp106 -query
 # オプション2：変更を保存して再作成
 ./commit-container.sh          # まず変更を保存！
 ./stop-container.sh rm         # コンテナを削除
-./start-container.sh --gpu intel --vnc  # 新しいモードで再作成
+./start-container.sh --gpu intel --vnc-type kasm  # 新しいモードで再作成
 
 # オプション3：ワンステップでコミットと再作成
-./commit-container.sh restart --gpu intel --vnc
+./commit-container.sh restart --gpu intel --vnc-type kasm
 ```
 
 **なぜモードを変更できないのか？**
@@ -1070,13 +1100,13 @@ docker-compose -f docker-compose.user.yml down
 **AMD/Intel GPU：**
 
 ```bash
-VIDEO_ENCODER=vah264enc ./start-container.sh none
+VIDEO_ENCODER=vah264enc ./start-container.sh --gpu intel
 ```
 
 **ソフトウェアレンダリング（GPUなし）：**
 
 ```bash
-VIDEO_ENCODER=x264enc ./start-container.sh none
+VIDEO_ENCODER=x264enc ./start-container.sh
 ```
 
 ### 追加ボリュームのマウント
@@ -1190,9 +1220,22 @@ docker build \
 
 ## ライセンス
 
+**メインプロジェクト:**
+
 Mozilla Public License 2.0
 
 詳細は[LICENSE](LICENSE)ファイルを参照してください。
+
+**サードパーティコンポーネント:**
+
+このプロジェクトは以下のサードパーティオープンソースソフトウェアを使用しています：
+
+- **kclient** ([LinuxServer.io/kclient](https://github.com/linuxserver/kclient))
+  - KasmVNCモードの音声ストリーミング機能に使用
+  - ライセンス: GNU General Public License v3.0 or later (GPL-3.0-or-later)
+  - 著作権: LinuxServer.io team
+
+サードパーティソフトウェアの完全な一覧とライセンスについては[THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md)を参照してください。
 
 ---
 

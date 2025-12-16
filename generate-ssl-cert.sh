@@ -214,7 +214,7 @@ if [ $? -eq 0 ]; then
     echo "  ENABLE_HTTPS=true \\"
     echo "    CERT_PATH=$(pwd)/${CERT_FILE} \\"
     echo "    KEY_PATH=$(pwd)/${KEY_FILE} \\"
-    echo "    ./start-container.sh --gpu nvidia --all --vnc"
+    echo "    ./start-container.sh --gpu nvidia --all --vnc-type kasm"
     echo "========================================"
 else
     echo ""

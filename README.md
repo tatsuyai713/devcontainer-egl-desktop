@@ -79,10 +79,11 @@ This repository is an enhanced fork oriented around Devcontainer usage. We kept 
   - `0,1` - Specific GPU devices
   - Prevents accidental GPU allocation
 
-- **🖥️ Dual Display Modes:** Choose your streaming protocol
-  - **Selkies GStreamer (default):** WebRTC with low latency, better for gaming
-  - **KasmVNC:** VNC over WebSocket, better compatibility, works without GPU, clipboard support
-  - Switch with simple `vnc` argument
+- **🖥️ Triple Display Modes:** Choose your streaming protocol
+  - **Selkies GStreamer (default):** WebRTC with low latency, built-in audio/video streaming, better for gaming
+  - **KasmVNC:** VNC over WebSocket with kclient audio support, better compatibility, works without GPU, clipboard and bidirectional audio (speaker/microphone) support
+  - **noVNC:** Basic VNC with host audio passthrough (audio output only via host PulseAudio), clipboard support
+  - Switch with `--vnc-type` or `-v` argument
 
 - **🔐 SSL Certificate Management:** Automated HTTPS setup
   - Interactive certificate generation script
@@ -116,7 +117,7 @@ This repository is an enhanced fork oriented around Devcontainer usage. We kept 
   - Detailed Japanese documentation (SCRIPTS.md)
 
 - **🌐 Multi-Language Support:** Japanese language environment available
-  - Set `IN_LOCALE=JP` during build for Japanese input (Mozc)
+  - Pass `JP` argument during build for Japanese input (Mozc)
   - Automatic timezone (Asia/Tokyo) and locale (ja_JP.UTF-8) configuration
   - RIKEN mirror repository for faster downloads in Japan
   - fcitx input method framework included
@@ -161,7 +162,7 @@ This repository is an enhanced fork oriented around Devcontainer usage. We kept 
 ```bash
 # 1. Build your user image (password will be prompted)
 ./build-user-image.sh              # English environment (default)
-IN_LOCALE=JP ./build-user-image.sh # Japanese environment with Mozc input
+./build-user-image.sh JP           # Japanese environment with Mozc input
 
 # 2. Generate SSL certificate (optional, for HTTPS)
 ./generate-ssl-cert.sh
@@ -183,7 +184,7 @@ IN_LOCALE=JP ./build-user-image.sh # Japanese environment with Mozc input
 
 # 5. Save your changes (IMPORTANT before removing container!)
 ./commit-container.sh              # Save container state to image
-./commit-container.sh restart all  # Save and restart with all GPUs
+./commit-container.sh restart --gpu nvidia --all  # Save and restart with all GPUs
 
 # 6. Stop the container
 ./stop-container.sh                # Stop (container persists, can restart)
@@ -192,7 +193,7 @@ IN_LOCALE=JP ./build-user-image.sh # Japanese environment with Mozc input
 # 7. Switch display mode (requires recreation)
 ./commit-container.sh              # Save changes first!
 ./stop-container.sh rm             # Remove container
-./start-container.sh --gpu intel --vnc # Recreate with KasmVNC mode
+./start-container.sh --gpu intel --vnc-type kasm # Recreate with KasmVNC mode
 ```
 
 That's it! 🎉
@@ -467,7 +468,7 @@ If you need to switch between Selkies and KasmVNC:
 ```bash
 # Method 1: Delete and recreate
 ./stop-container.sh rm
-./start-container.sh --gpu intel --vnc # Switch to KasmVNC
+./start-container.sh --gpu intel --vnc-type kasm # Switch to KasmVNC
 
 # Method 2: Commit, delete, and recreate
 ./commit-container.sh              # Save changes first
@@ -475,7 +476,7 @@ If you need to switch between Selkies and KasmVNC:
 ./start-container.sh --gpu intel      # Switch to Selkies
 
 # Method 3: Commit and auto-restart
-./commit-container.sh restart --gpu intel --vnc  # Save and switch to KasmVNC
+./commit-container.sh restart --gpu intel --vnc-type kasm  # Save and switch to KasmVNC
 ```
 
 The start script will detect mode mismatch and show a helpful error message with instructions.
@@ -525,7 +526,7 @@ CONTAINER_NAME=my-desktop ./start-container.sh --gpu nvidia --all
 
 | Script | Description | Usage |
 |--------|-------------|-------|
-| `build-user-image.sh` | Build your user-specific image | `./build-user-image.sh` or `IN_LOCALE=JP ./build-user-image.sh` |
+| `build-user-image.sh` | Build your user-specific image | `./build-user-image.sh` or `./build-user-image.sh JP` |
 | `start-container.sh` | Start the desktop container | `./start-container.sh [--gpu <type>] [--vnc-type <type>]` |
 | `stop-container.sh` | Stop the container | `./stop-container.sh [rm\|remove]` |
 | `generate-ssl-cert.sh` | Generate self-signed SSL certificate | `./generate-ssl-cert.sh` |
@@ -576,7 +577,7 @@ If you've installed software or made changes in the container:
 ./commit-container.sh restart --gpu nvidia --all      # Restart with all NVIDIA GPUs
 ./commit-container.sh restart --gpu intel       # Restart with Intel GPU
 ./commit-container.sh restart --gpu amd      # Restart with AMD GPU
-./commit-container.sh restart --vnc          # Restart with VNC mode (no GPU)
+./commit-container.sh restart --vnc-type kasm          # Restart with VNC mode (no GPU)
 
 # Save with a custom tag
 COMMIT_TAG=my-setup ./commit-container.sh
@@ -612,7 +613,7 @@ exit
 ./start-container.sh --gpu intel
 
 # 5. To switch display mode with saved changes:
-./commit-container.sh restart --gpu intel --vnc  # Save and switch to KasmVNC
+./commit-container.sh restart --gpu intel --vnc-type kasm  # Save and switch to KasmVNC
 ```
 
 **Deleting Image:**
@@ -624,8 +625,11 @@ exit
 # Force delete (removes associated containers too)
 FORCE=true ./delete-image.sh
 
-# Delete a specific user's image
-IMAGE_TAG=username ./delete-image.sh
+# Delete a specific version
+IMAGE_TAG=my-setup ./delete-image.sh
+
+# Delete another user's image
+IMAGE_NAME=devcontainer-ubuntu-egl-desktop-otheruser ./delete-image.sh
 ```
 
 ---
@@ -656,7 +660,7 @@ FRAMERATE=60              # FPS
 VIDEO_ENCODER=x264enc     # H.264 software
 VIDEO_BITRATE=4000        # Lower bitrate for CPU
 
-./start-container.sh --gpu all
+./start-container.sh
 ```
 
 **Available encoders:**
@@ -669,9 +673,45 @@ VIDEO_BITRATE=4000        # Lower bitrate for CPU
 
 ### Audio Settings
 
+**Audio Support by Display Mode:**
+
+| Mode | Audio Output | Audio Input (Microphone) | Technology |
+|------|-------------|-------------------------|------------|
+| **Selkies** | ✅ Built-in | ✅ Built-in | WebRTC (browser native) |
+| **KasmVNC** | ✅ kclient | ✅ kclient | WebSocket + kasmbins audio system |
+| **noVNC** | ✅ Host passthrough | ❌ Not supported | Host PulseAudio mounted to container |
+
+**Selkies Audio Configuration:**
+
 ```bash
 AUDIO_BITRATE=128000      # Audio bitrate in bps (default: 128000)
 ./start-container.sh --gpu nvidia --all
+```
+
+**KasmVNC Audio (kclient):**
+
+KasmVNC mode uses [LinuxServer.io's kclient](https://github.com/linuxserver/kclient) for bidirectional audio:
+- Audio server runs on port 3000 (proxied via nginx)
+- Uses PipeWire-Pulse with VirtualSpeaker/VirtualMic devices
+- Browser-to-container audio streaming via WebSockets
+- Automatic audio device configuration
+
+```bash
+./start-container.sh --gpu nvidia --all --vnc-type kasm
+# Audio controls appear in the kclient web interface
+```
+
+**noVNC Audio (Host Passthrough):**
+
+noVNC mode mounts your host PulseAudio socket for audio output:
+- Container applications play audio through host speakers
+- Requires PulseAudio running on host: `/run/user/$(id -u)/pulse/native`
+- Read-only mount for security
+- No microphone input support in this mode
+
+```bash
+./start-container.sh --gpu nvidia --all --vnc-type novnc
+# Audio plays through host system automatically
 ```
 
 ### Keyboard Settings
@@ -688,18 +728,18 @@ Supported layouts include: Japanese (jp), US (us), UK (gb), German (de), French 
 
 ```bash
 # Specify keyboard layout manually
-KEYBOARD_LAYOUT=jp ./start-container.sh intel              # Japanese keyboard
-KEYBOARD_LAYOUT=us ./start-container.sh intel              # US keyboard
-KEYBOARD_LAYOUT=de ./start-container.sh intel              # German keyboard
+KEYBOARD_LAYOUT=jp ./start-container.sh --gpu intel              # Japanese keyboard
+KEYBOARD_LAYOUT=us ./start-container.sh --gpu intel              # US keyboard
+KEYBOARD_LAYOUT=de ./start-container.sh --gpu intel              # German keyboard
 
 # With keyboard model (for non-standard keyboards)
-KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh intel  # Japanese 106-key
+KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh --gpu intel  # Japanese 106-key
 
 # With keyboard variant
-KEYBOARD_LAYOUT=us KEYBOARD_VARIANT=dvorak ./start-container.sh all # Dvorak layout
+KEYBOARD_LAYOUT=us KEYBOARD_VARIANT=dvorak ./start-container.sh --gpu nvidia --all # Dvorak layout
 
 # Full specification
-KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-container.sh intel
+KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-container.sh --gpu intel
 ```
 
 **Common Keyboard Models:**
@@ -731,11 +771,11 @@ KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-containe
 - VNC-based streaming over WebSocket
 - Better compatibility
 - Works without GPU
-- ⚠️ **Audio limitation:** Uses host PulseAudio (audio only on host machine, not streamed to remote browser)
-- For audio streaming to remote clients, use Selkies mode instead
+- ✅ **Audio supported:** Bidirectional audio (speaker + microphone) via kclient WebSocket streaming
+- Clipboard support included
 
 ```bash
-./start-container.sh --gpu nvidia --all --vnc # Activates KasmVNC mode
+./start-container.sh --gpu nvidia --all --vnc-type kasm # Activates KasmVNC mode
 ```
 
 ---
@@ -940,10 +980,10 @@ This is expected behavior. Display mode (Selkies/KasmVNC) cannot be changed for 
 # Option 2: Save changes and recreate
 ./commit-container.sh          # Save changes first!
 ./stop-container.sh rm         # Remove container
-./start-container.sh --gpu intel --vnc  # Recreate with new mode
+./start-container.sh --gpu intel --vnc-type kasm  # Recreate with new mode
 
 # Option 3: One-step commit and recreate
-./commit-container.sh restart --gpu intel --vnc
+./commit-container.sh restart --gpu intel --vnc-type kasm
 ```
 
 **Why can't I change the mode?**
@@ -1181,9 +1221,22 @@ For base image changes, test thoroughly and update version numbers as needed.
 
 ## License
 
+**Main Project:**
+
 Mozilla Public License 2.0
 
 See [LICENSE](LICENSE) file for details.
+
+**Third-Party Components:**
+
+This project uses the following third-party open source software:
+
+- **kclient** ([LinuxServer.io/kclient](https://github.com/linuxserver/kclient))
+  - Used in KasmVNC mode for audio streaming functionality
+  - License: GNU General Public License v3.0 or later (GPL-3.0-or-later)
+  - Copyright: LinuxServer.io team
+
+For a complete list of third-party software and their licenses, see [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
 
 ---
 
