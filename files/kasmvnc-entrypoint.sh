@@ -64,17 +64,7 @@ if [ "$(echo ${SELKIES_ENABLE_RESIZE} | tr '[:upper:]' '[:lower:]')" = "true" ];
 echo 'Waiting for X Socket' && until [ -S "/tmp/.X11-unix/X${DISPLAY#*:}" ]; do sleep 0.5; done && echo 'X Server is ready'
 
 # Configure NGINX
-# Note: For KasmVNC, we use NGINX Basic Auth only and disable KasmVNC's built-in authentication
-# This provides a unified authentication experience across all browsers
-if [ "$(echo ${SELKIES_ENABLE_BASIC_AUTH} | tr '[:upper:]' '[:lower:]')" != "false" ]; then 
-    # Use pre-generated htpasswd file from image build
-    if [ -f /etc/.htpasswd ]; then
-        cp /etc/.htpasswd "${XDG_RUNTIME_DIR}/.htpasswd"
-    else
-        # Fallback: generate from environment variable if available
-        htpasswd -bcm "${XDG_RUNTIME_DIR}/.htpasswd" "${SELKIES_BASIC_AUTH_USER:-${USER}}" "${SELKIES_BASIC_AUTH_PASSWORD:-password}"
-    fi
-fi
+if [ "$(echo ${SELKIES_ENABLE_BASIC_AUTH} | tr '[:upper:]' '[:lower:]')" != "false" ]; then htpasswd -bcm "${XDG_RUNTIME_DIR}/.htpasswd" "${SELKIES_BASIC_AUTH_USER:-${USER}}" "${SELKIES_BASIC_AUTH_PASSWORD:-${PASSWD}}"; fi
 
 # Write NGINX config to user-writable location first
 mkdir -p "${XDG_RUNTIME_DIR}/nginx" 2>/dev/null

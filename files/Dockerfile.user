@@ -280,10 +280,6 @@ RUN if [ -f /usr/share/applications/google-chrome.desktop ]; then \
 RUN mkdir -p /home/${USER_NAME}/.config && \
     chown ${USER_UID}:${USER_GID} /home/${USER_NAME}/.config
 
-# Generate htpasswd file for authentication (avoiding plaintext password in ENV)
-RUN htpasswd -bcm /etc/.htpasswd ${USER_NAME} ${USER_PASSWORD} && \
-    chmod 644 /etc/.htpasswd
-
 # Set ownership of all user files
 RUN chown -R ${USER_UID}:${USER_GID} /home/${USER_NAME}
 
@@ -295,6 +291,9 @@ ENV SHELL=/bin/bash
 ENV USER=${USER_NAME}
 ENV HOME=/home/${USER_NAME}
 WORKDIR /home/${USER_NAME}
+
+# Store password as environment variable
+ENV PASSWD=${USER_PASSWORD}
 
 EXPOSE 8080
 
