@@ -32,7 +32,7 @@ docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04
 # 7) Start container with noVNC using short option (Intel)
 ./start-container.sh --gpu intel -v novnc
 
-# 8) Start container with Xorg (Intel, for Vulkan support)
+# 8) Start container with Xorg (Intel)
 ./start-container.sh --gpu intel --xorg
 ```
 
