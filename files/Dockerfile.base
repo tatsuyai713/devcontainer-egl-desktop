@@ -337,15 +337,12 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
         libpulse-dev && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
 
-# Install Node.js 20.x and kclient for audio support following LinuxServer approach
+# Install Node.js 20.x and build kclient for audio support following LinuxServer approach
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get update && apt-get install --no-install-recommends -y \
         nodejs \
         build-essential && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
-
-# Build and install kclient
-RUN mkdir -p /kclient && \
+    mkdir -p /kclient && \
     echo "precedence ::ffff:0:0/96  100" >> /etc/gai.conf && \
     if [ -z "${KCLIENT_VERSION}" ]; then \
         KCLIENT_VERSION=$(curl -sX GET "https://api.github.com/repos/linuxserver/kclient/releases/latest" | awk '/tag_name/{print $4;exit}' FS='[""]'); \
