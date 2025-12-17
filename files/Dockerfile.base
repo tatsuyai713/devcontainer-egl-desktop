@@ -264,15 +264,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     echo "/usr/local/nvidia/lib64" >> /etc/ld.so.conf.d/nvidia.conf && \
     # Configure OpenCL manually
     mkdir -pm755 /etc/OpenCL/vendors && echo "libnvidia-opencl.so.1" > /etc/OpenCL/vendors/nvidia.icd && \
-    # Configure Vulkan manually
-    VULKAN_API_VERSION=$(dpkg -s libvulkan1 | grep -oP 'Version: [0-9|\.]+' | grep -oP '[0-9]+(\.[0-9]+)(\.[0-9]+)') && \
-    mkdir -pm755 /etc/vulkan/icd.d/ && echo "{\n\
-    \"file_format_version\" : \"1.0.0\",\n\
-    \"ICD\": {\n\
-        \"library_path\": \"libGLX_nvidia.so.0\",\n\
-        \"api_version\" : \"${VULKAN_API_VERSION}\"\n\
-    }\n\
-}" > /etc/vulkan/icd.d/nvidia_icd.json && \
+    # NVIDIA Vulkan ICD will be configured at runtime in entrypoint.sh based on driver availability
     # Configure EGL manually
     mkdir -pm755 /usr/share/glvnd/egl_vendor.d/ && echo "{\n\
     \"file_format_version\" : \"1.0.0\",\n\
