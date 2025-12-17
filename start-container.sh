@@ -363,9 +363,16 @@ elif [ "${GPU_VENDOR}" = "intel" ]; then
         echo "Warning: /dev/dri not found, Intel GPU not available (WSL environment detected)"
     fi
     CMD="${CMD} -e ENABLE_NVIDIA=false"
-    CMD="${CMD} -e LIBVA_DRIVER_NAME=iHD"
-    VIDEO_ENCODER="vah264enc"
-    echo "Using Intel GPU with VA-API hardware acceleration (Quick Sync Video)"
+    # Check if Intel GPU VA-API is actually available
+    if vainfo 2>&1 | grep -q "iHD.*VAEntrypoint"; then
+        CMD="${CMD} -e LIBVA_DRIVER_NAME=iHD"
+        VIDEO_ENCODER="vah264enc"
+        echo "Using Intel GPU with VA-API hardware acceleration (Quick Sync Video)"
+    else
+        echo "Warning: Intel VA-API not available, falling back to software encoding"
+        VIDEO_ENCODER="x264enc"
+        echo "Using software encoding (x264) for Intel GPU mode"
+    fi
 elif [ "${GPU_VENDOR}" = "amd" ]; then
     # AMD GPU - use for rendering but software encoding if VA-API not working
     if [ -d "/dev/dri" ] && [ -n "$(ls -A /dev/dri 2>/dev/null)" ]; then
@@ -396,6 +403,8 @@ elif [ "${GPU_VENDOR}" = "nvidia" ]; then
         echo "Error: --gpu nvidia requires either --all or --num. Example: --gpu nvidia --all or --gpu nvidia --num 0,1"
         exit 1
     fi
+    # Enable NVIDIA GPU support explicitly
+    CMD="${CMD} -e ENABLE_NVIDIA=true"
     # VIDEO_ENCODER is nvh264enc by default
 else
     echo "Error: Unknown GPU vendor: ${GPU_VENDOR}"
