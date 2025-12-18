@@ -1,4 +1,4 @@
-# docker-selkies-egl-desktop
+# devcontainer-egl-desktop
 
 ## Devcontainer 向けクイックスタート
 
