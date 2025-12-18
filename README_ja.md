@@ -189,7 +189,7 @@ docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04
 # 注：キーボードレイアウトはホストシステムから自動検出されます
 
 # 4. ブラウザでアクセス
-# → http://localhost:8080 （または https://localhost:8080 HTTPS有効時）
+# → http://localhost:`1000+UID`（または https://localhost:`1000+UID`HTTPS有効時）
 
 # 5. 変更を保存（コンテナを削除する前に重要！）
 ./commit-container.sh              # コンテナの状態をイメージに保存
@@ -361,16 +361,11 @@ docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:24.04
 
 実行時にパスワードが2回プロンプトされ、約1〜2分でビルドが完了します。
 
-**補足：自動化やカスタマイズ用の環境変数例**
+**補足：自動化やカスタマイズ**
 
-```bash
-# ベースイメージのバージョン指定
-BASE_IMAGE_TAG=v1.0 ./build-user-image.sh
-# パスワード自動指定（自動化用）
-USER_PASSWORD=mysecurepassword ./build-user-image.sh
-# キャッシュなしでビルド
-NO_CACHE=true ./build-user-image.sh
-```
+- 特定のベースイメージを使う場合は、`BASE_IMAGE_TAG` を事前に設定してから `build-user-image.sh` を実行します。
+- CI などでパスワード入力を自動にしたい場合は `USER_PASSWORD` を環境変数として渡してください。
+- Docker キャッシュを無効化したい場合は `NO_CACHE=true` をエクスポートしてからスクリプトを実行します。
 
 **高度なカスタムビルド例（複数ユーザー用）**
 
@@ -489,25 +484,18 @@ SelkiesとKasmVNCを切り替える必要がある場合：
 
 startスクリプトはモードの不一致を検出し、手順付きの役立つエラーメッセージを表示します。
 
-### 一般的なオプション（スクリプトベース）
+### スクリプトの主な設定項目
 
-```bash
-# HTTPSを使用
-./generate-ssl-cert.sh
-./start-container.sh --gpu nvidia --all
-
-# 別のポートを使用
-HTTPS_PORT=9090 ./start-container.sh --gpu nvidia --all
-
-# 高解像度（4K）
-DISPLAY_WIDTH=3840 DISPLAY_HEIGHT=2160 ./start-container.sh --gpu nvidia --all
-
-# フォアグラウンドモード（ログを直接表示）
-DETACHED=false ./start-container.sh --gpu nvidia --all
-
-# カスタムコンテナ名
-CONTAINER_NAME=my-desktop ./start-container.sh --gpu nvidia --all
-```
+| 設定名 | 変数 | 説明 |
+|--------|------|------|
+| HTTPSポート | `HTTPS_PORT` | デフォルト（`10000 + UID`）と競合する場合に上書きします。 |
+| 表示解像度 | `DISPLAY_WIDTH`, `DISPLAY_HEIGHT`, `DISPLAY_REFRESH` | 4K やウルトラワイドなど任意の解像度に固定します。 |
+| フォアグラウンド実行 | `DETACHED` | `false` にすると `start-container.sh` をフォアグラウンドで実行できます。 |
+| コンテナ名 | `CONTAINER_NAME` | 既定の `devcontainer-egl-desktop-<ユーザー名>` を任意の名前に変更します。 |
+| HTTPS/SSL | `CERT_PATH`, `KEY_PATH`, `SELKIES_HTTPS_CERT`, `SELKIES_HTTPS_KEY` | 自前の証明書を使用したい場合のパスを指定します。 |
+| キーボード設定 | `KEYBOARD_LAYOUT`, `KEYBOARD_MODEL`, `KEYBOARD_VARIANT` | 自動検出が合わない場合に固定値を指定します。 |
+| ビデオエンコーダー | `VIDEO_ENCODER`, `VIDEO_BITRATE`, `FRAMERATE` | GPU モードに応じてエンコーダーやビットレートをカスタマイズします。 |
+| TURN / WebRTC | `ENABLE_TURN`, `TURN_PORT`, `SELKIES_TURN_*` | Selkies でリモートアクセスを行う際の TURN サーバー設定を調整します。 |
 
 ---
 
@@ -639,15 +627,6 @@ docker-compose -f docker-compose.user.yml down
 FOLLOW=true ./logs-container.sh
 ```
 
-**シェルへのアクセス：**
-
-```bash
-# あなたのユーザーとして
-./shell-container.sh
-
-# rootとして
-AS_ROOT=true ./shell-container.sh
-```
 
 **変更の保存：**
 
@@ -734,32 +713,10 @@ DISPLAY_DPI=96            # DPI設定
 
 ### ビデオエンコーディング
 
-```bash
-# NVIDIA GPU（ハードウェアエンコーディング）
-VIDEO_ENCODER=nvh264enc   # NVIDIAでH.264
-VIDEO_BITRATE=8000        # kbps
-FRAMERATE=60              # FPS
-
-# ソフトウェアエンコーディング（GPUなし）
-VIDEO_ENCODER=x264enc     # H.264ソフトウェア
-VIDEO_BITRATE=4000        # CPUでより低いビットレート
-
-./start-container.sh --gpu nvidia --all
-```
-
-**利用可能なエンコーダー：**
-
-- `nvh264enc` - NVIDIA H.264（NVIDIA GPU必要）
-- `x264enc` - ソフトウェアH.264（CPU）
-- `vp8enc` - ソフトウェアVP8
-- `vp9enc` - ソフトウェアVP9
-- `vah264enc` - AMD/Intelハードウェアエンコーディング
-
-**Intelモード:** `--gpu intel` は既定で VA-API ハードウェアエンコーディング（`vah264enc`）を有効化します。  
-ソフトウェアエンコード（`x264enc`）に戻したい場合は `INTEL_FORCE_VAAPI=false ./start-container.sh --gpu intel` のように指定してください。
-
-**AMDモード:** `--gpu amd` も既定で VA-API ハードウェアエンコーディング（`LIBVA_DRIVER_NAME=radeonsi`, `vah264enc`）を利用します。  
-ソフトウェアエンコードに切り替える場合は `AMD_FORCE_VAAPI=false ./start-container.sh --gpu amd`、または `AMD_LIBVA_DRIVER` を必要に応じて上書きしてください。
+- 利用可能なエンコーダー：`nvh264enc`（NVIDIA）、`vah264enc`（Intel/AMD VA-API）、`x264enc`（ソフトウェア）、`vp8enc`、`vp9enc` など。
+- `VIDEO_ENCODER` / `VIDEO_BITRATE` / `FRAMERATE` を `.env`（または `compose-env.sh`）で設定すると、Selkies が起動時に該当値を読み込みます。
+- **Intel モード:** `--gpu intel` は既定で VA-API（`vah264enc`）を使用します。ソフトウェアに切り替える場合は `.env` で `INTEL_FORCE_VAAPI=false` を設定してください。
+- **AMD モード:** `--gpu amd` も VA-API（`LIBVA_DRIVER_NAME=radeonsi`, `vah264enc`）が既定です。ソフトウェアに切り替える場合は `AMD_FORCE_VAAPI=false` や `AMD_LIBVA_DRIVER` の上書きを行ってください。
 
 ### ハードウェアエンコーダの確認方法
 
@@ -814,12 +771,7 @@ watch -n1 nvidia-smi dmon -s pucvmt
 | **KasmVNC** | ✅ kclient | ✅ kclient | WebSocket + kasmbins音声システム |
 | **noVNC** | ✅ ホストパススルー | ❌ 非対応 | ホストPulseAudioをコンテナにマウント |
 
-**Selkies音声設定:**
-
-```bash
-AUDIO_BITRATE=128000      # 音声ビットレート（bps）（デフォルト：128000）
-./start-container.sh --gpu nvidia --all
-```
+**Selkies音声設定:** デフォルトの 128000bps から変更する場合は `.env` や `compose-env.sh` で `AUDIO_BITRATE` / `SELKIES_AUDIO_BITRATE` などの値を調整してください。設定はコンテナ起動時に自動で適用されます。
 
 **KasmVNC音声（kclient）:**
 
@@ -857,23 +809,15 @@ noVNCモードは音声出力のためにホストPulseAudioソケットをマ�
 
 サポートされているレイアウトには：日本語（jp）、US（us）、UK（gb）、ドイツ語（de）、フランス語（fr）、スペイン語（es）、イタリア語（it）、韓国語（kr）、中国語（cn）などが含まれます。
 
-**手動オーバーライド：**
+**手動オーバーライド：** 自動検出が合わない場合は `.env` で以下の変数を設定するか、`./create-devcontainer-config.sh`（または `compose-env.sh`）を再実行して指定してください。
 
-```bash
-# キーボードレイアウトを手動で指定
-KEYBOARD_LAYOUT=jp ./start-container.sh --gpu intel              # 日本語キーボード
-KEYBOARD_LAYOUT=us ./start-container.sh --gpu intel              # USキーボード
-KEYBOARD_LAYOUT=de ./start-container.sh --gpu intel              # ドイツ語キーボード
+| 変数 | 役割 | 例 |
+|------|------|----|
+| `KEYBOARD_LAYOUT` | 基本レイアウト | `jp`, `us`, `uk`, `de`, `fr`, `es` |
+| `KEYBOARD_MODEL` | 物理キーボードモデル | `pc105`, `jp106`, `pc104` |
+| `KEYBOARD_VARIANT` | レイアウトバリアント | `dvorak`, `azerty`, `colemak` |
 
-# キーボードモデル付き（非標準キーボード用）
-KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh --gpu intel  # 日本語106キー
-
-# キーボードバリアント付き
-KEYBOARD_LAYOUT=us KEYBOARD_VARIANT=dvorak ./start-container.sh --gpu nvidia --all # Dvorakレイアウト
-
-# 完全指定
-KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-container.sh --gpu intel
-```
+インタラクティブに設定したい場合は `./create-devcontainer-config.sh` を再実行すると `.devcontainer/.env` に反映されます。
 
 **一般的なキーボードモデル：**
 - `pc105` - 標準105キーPCキーボード（デフォルト）
@@ -992,7 +936,7 @@ docker images | grep devcontainer-ubuntu-egl-desktop-base
 sudo netstat -tulpn | grep 8080
 
 # 別のポートを使用
-HTTPS_PORT=8081 ./start-container.sh --gpu nvidia --all
+./start-container.sh --gpu nvidia --all
 ```
 
 ### GPUが検出されない
@@ -1011,9 +955,6 @@ docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
 ### 権限の問題
 
 ```bash
-# rootとしてアクセス
-AS_ROOT=true ./shell-container.sh
-
 # ユーザーIDが一致するか確認
 id  # ホスト上で
 ./shell-container.sh  # その後コンテナ内で'id'を実行
@@ -1077,9 +1018,9 @@ echo $KEYBOARD_LAYOUT  # システムと一致するはず
 # ホストキーボード設定を確認
 cat /etc/default/keyboard
 
-# 正しいレイアウトでオーバーライド
+# キーボード設定を見直す（サポートされる値は README を参照）
 ./stop-container.sh rm
-KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh --gpu intel
+./start-container.sh --gpu intel
 ```
 
 **特に日本語キーボードの場合：**
@@ -1233,17 +1174,8 @@ docker-compose -f docker-compose.user.yml down
 - Maxwell世代以降
 - ハードウェアエンコーディング用のNVENCサポート
 
-**AMD/Intel GPU：**
-
-```bash
-VIDEO_ENCODER=vah264enc ./start-container.sh --gpu intel
-```
-
-**ソフトウェアレンダリング（GPUなし）：**
-
-```bash
-VIDEO_ENCODER=x264enc ./start-container.sh
-```
+**AMD/Intel GPU：** `.env`（または `compose-env.sh`）で `VIDEO_ENCODER=vah264enc` を設定すると VA-API エンコーダーを強制できます。  
+**ソフトウェアレンダリング：** `VIDEO_ENCODER=x264enc` を指定すると CPU エンコードに切り替わります。
 
 ### 追加ボリュームのマウント
 
@@ -1255,17 +1187,9 @@ CMD="${CMD} -v /path/on/host:/path/in/container"
 
 ### 同じホスト上の複数ユーザー
 
-各ユーザーは独自のイメージをビルドする必要があります：
+各ユーザーごとに `build-user-image.sh` を実行してください（対話的にパスワードを入力）。自動化する場合は `USER_PASSWORD` などの環境変数を事前に設定できます。
 
-```bash
-# ユーザー1
-USER_PASSWORD=user1pass ./build-user-image.sh
-
-# ユーザー2（同じマシン上）
-USER_PASSWORD=user2pass ./build-user-image.sh
-```
-
-各ユーザーはユーザー名とUID/GIDに一致する独自のタグ付きイメージをビルドします：
+ビルドされるイメージはユーザー名と UID/GID に基づくタグになります：
 - イメージ：`devcontainer-ubuntu-egl-desktop-{username}:24.04`
 - コンテナ：`devcontainer-egl-desktop-{username}`
 

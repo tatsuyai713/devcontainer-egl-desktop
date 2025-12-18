@@ -190,7 +190,7 @@ This repository is an enhanced fork oriented around Devcontainer usage. We kept 
 # Note: Keyboard layout is auto-detected from your host system
 
 # 4. Access via browser
-# → http://localhost:8080 (or https://localhost:8080 if HTTPS enabled)
+# → http://localhost:`1000+UID`(or https://localhost:`1000+UID`if HTTPS enabled)
 
 # 5. Save your changes (IMPORTANT before removing container!)
 ./commit-container.sh              # Save container state to image
@@ -361,18 +361,11 @@ This creates your personal image with matching UID/GID:
 
 The build will prompt for a password (entered twice) and completes in about 1–2 minutes.
 
-**Optional: automation / customization examples**
+**Optional: automation / customization**
 
-```bash
-# Use a specific base image version
-BASE_IMAGE_TAG=v1.0 ./build-user-image.sh
-
-# Provide password via environment (automation)
-USER_PASSWORD=mysecurepassword ./build-user-image.sh
-
-# Build without cache
-NO_CACHE=true ./build-user-image.sh
-```
+- Set `BASE_IMAGE_TAG` in your environment before running the script if you need a specific base release.
+- Provide `USER_PASSWORD` via an environment variable (or `.env`) when automating builds.
+- Toggle Docker cache usage by exporting `NO_CACHE=true` before invoking the script.
 
 **Advanced: custom build for another user**
 
@@ -419,11 +412,8 @@ The `start-container.sh` script uses optional arguments for GPU and display mode
 ./start-container.sh --gpu nvidia --all --vnc-type novnc         # noVNC (with clipboard support) with NVIDIA GPUs
 ./start-container.sh --vnc-type novnc                   # noVNC with software rendering
 
-# Keyboard layout override (auto-detected by default):
-KEYBOARD_LAYOUT=jp ./start-container.sh --gpu intel        # Japanese keyboard
-KEYBOARD_LAYOUT=us ./start-container.sh --gpu intel    # US keyboard
-KEYBOARD_LAYOUT=de KEYBOARD_MODEL=pc105 ./start-container.sh --gpu nvidia --all  # German keyboard
-```
+**Keyboard layout override:** export `KEYBOARD_LAYOUT` (and optionally `KEYBOARD_MODEL` / `KEYBOARD_VARIANT`) before running `start-container.sh` if auto-detection does not match your keyboard.
+Common values include `jp`, `us`, `de`, `fr`, `gb`, and `es`.
 
 **UID-Based Port Assignment (Multi-User Support):**
 
@@ -575,20 +565,18 @@ Use VS Code's Dev Container feature for integrated development:
 
 ---
 
-### Common Options (Script-Based)
+### Common Script Options
 
-# Use a different port
-HTTPS_PORT=9090 ./start-container.sh --gpu nvidia --all
-
-# High resolution (4K)
-DISPLAY_WIDTH=3840 DISPLAY_HEIGHT=2160 ./start-container.sh --gpu nvidia --all
-
-# Foreground mode (see logs directly)
-DETACHED=false ./start-container.sh --gpu nvidia --all
-
-# Custom container name
-CONTAINER_NAME=my-desktop ./start-container.sh --gpu nvidia --all
-```
+| Setting | Variable(s) | Description |
+|---------|-------------|-------------|
+| HTTPS port | `HTTPS_PORT` | Override the default `10000 + UID` binding when conflicts exist. |
+| Display resolution | `DISPLAY_WIDTH`, `DISPLAY_HEIGHT`, `DISPLAY_REFRESH` | Force a fixed desktop size (4K, ultra-wide, etc.). |
+| Detached mode | `DETACHED` | Set to `false` to run `start-container.sh` in the foreground and stream logs directly. |
+| Container name | `CONTAINER_NAME` | Override the default container name (`devcontainer-egl-desktop-${USER}`). |
+| Keyboard layout override | `KEYBOARD_LAYOUT`, `KEYBOARD_MODEL`, `KEYBOARD_VARIANT` | Force a specific keyboard configuration when auto-detection is incorrect. |
+| Video encoder | `VIDEO_ENCODER`, `VIDEO_BITRATE`, `FRAMERATE` | Select encoder and stream quality; defaults depend on GPU mode. |
+| SSL certificates | `CERT_PATH`, `KEY_PATH`, `SELKIES_HTTPS_CERT`, `SELKIES_HTTPS_KEY` | Point to custom certificates if you do not want the auto-generated ones. |
+| TURN/WebRTC | `ENABLE_TURN`, `TURN_PORT`, `SELKIES_TURN_*` | Control TURN server behavior when hosting remote Selkies sessions. |
 
 ### Stopping the Container
 
@@ -639,20 +627,10 @@ For detailed Japanese documentation, see [SCRIPTS.md](SCRIPTS.md).
 ```bash
 # View last 100 lines
 ./logs-container.sh
-
-# Follow logs in real-time
-FOLLOW=true ./logs-container.sh
 ```
 
-**Accessing Shell:**
+- To follow logs continuously, export `FOLLOW=true` before running `logs-container.sh`.
 
-```bash
-# As your user
-./shell-container.sh
-
-# As root
-AS_ROOT=true ./shell-container.sh
-```
 
 **Saving Changes:**
 
@@ -668,13 +646,8 @@ If you've installed software or made changes in the container:
 ./commit-container.sh restart --gpu amd      # Restart with AMD GPU
 ./commit-container.sh restart --vnc-type kasm          # Restart with VNC mode (no GPU)
 
-# Save with a custom tag
-COMMIT_TAG=my-setup ./commit-container.sh
-
-# Use the saved image
-IMAGE_NAME=devcontainer-ubuntu-egl-desktop-$(whoami):my-setup \
-  CONTAINER_NAME=my-desktop-2 \
-  ./start-container.sh --gpu nvidia --all
+- To use a custom tag for the committed image, set `COMMIT_TAG` in your environment before running `commit-container.sh`.
+- To start from a specific committed image, set `IMAGE_NAME` and `CONTAINER_NAME` before invoking `start-container.sh`.
 ```
 
 **Important Notes:**
@@ -708,18 +681,9 @@ exit
 **Deleting Image:**
 
 ```bash
-# Delete your user image
-./delete-image.sh
-
-# Force delete (removes associated containers too)
-FORCE=true ./delete-image.sh
-
-# Delete a specific version
-IMAGE_TAG=my-setup ./delete-image.sh
-
-# Delete another user's image
-IMAGE_NAME=devcontainer-ubuntu-egl-desktop-otheruser ./delete-image.sh
-```
+- `./delete-image.sh` removes your user image.
+- Set `FORCE=true` if you also need to delete dependent containers.
+- Use `IMAGE_TAG` or `IMAGE_NAME` to target specific tags/images before running the script.
 
 ---
 
@@ -739,32 +703,11 @@ DISPLAY_DPI=96            # DPI setting
 
 ### Video Encoding
 
-```bash
-# NVIDIA GPU (hardware encoding)
-VIDEO_ENCODER=nvh264enc   # H.264 with NVIDIA
-VIDEO_BITRATE=8000        # kbps
-FRAMERATE=60              # FPS
+**Available encoders:** `nvh264enc` (NVIDIA), `vah264enc` (Intel/AMD VA-API), `x264enc` (software H.264), `vp8enc`, and `vp9enc`. Adjust `VIDEO_ENCODER`, `VIDEO_BITRATE`, and `FRAMERATE` via `.env` or `compose-env.sh`; Selkies consumes these values automatically when the container starts.
 
-# Software encoding (no GPU)
-VIDEO_ENCODER=x264enc     # H.264 software
-VIDEO_BITRATE=4000        # Lower bitrate for CPU
+**Intel mode:** `--gpu intel` enables VA-API (`vah264enc`) by default. Set `INTEL_FORCE_VAAPI=false` in `.env` if you need to fall back to software (`x264enc`).
 
-./start-container.sh
-```
-
-**Available encoders:**
-
-- `nvh264enc` - NVIDIA H.264 (requires NVIDIA GPU)
-- `x264enc` - Software H.264 (CPU)
-- `vp8enc` - Software VP8
-- `vp9enc` - Software VP9
-- `vah264enc` - AMD/Intel hardware encoding
-
-**Intel mode:** `--gpu intel` now enables VA-API hardware encoding (`vah264enc`) by default.  
-Set `INTEL_FORCE_VAAPI=false` before `./start-container.sh --gpu intel` if you need to fall back to software (`x264enc`).
-
-**AMD mode:** `--gpu amd` also uses VA-API hardware encoding by default (`LIBVA_DRIVER_NAME=radeonsi`, `vah264enc`).  
-Set `AMD_FORCE_VAAPI=false` (or override `AMD_LIBVA_DRIVER`) before `./start-container.sh --gpu amd` to force software encoding.
+**AMD mode:** `--gpu amd` also defaults to VA-API hardware encoding (`LIBVA_DRIVER_NAME=radeonsi`, `vah264enc`). Set `AMD_FORCE_VAAPI=false` or override `AMD_LIBVA_DRIVER` in `.env` to force software encoding.
 
 ### Checking Hardware Encoder Usage
 
@@ -821,12 +764,7 @@ watch -n1 nvidia-smi dmon -s pucvmt
 | **KasmVNC** | ✅ kclient | ✅ kclient | WebSocket + kasmbins audio system |
 | **noVNC** | ✅ Host passthrough | ❌ Not supported | Host PulseAudio mounted to container |
 
-**Selkies Audio Configuration:**
-
-```bash
-AUDIO_BITRATE=128000      # Audio bitrate in bps (default: 128000)
-./start-container.sh --gpu nvidia --all
-```
+**Selkies Audio Configuration:** adjust `AUDIO_BITRATE`, `SELKIES_AUDIO_BITRATE`, or other related variables in `.env` (or via `compose-env.sh`) if you need to change the default 128000 bps stream. All values are applied automatically when the container starts.
 
 **KasmVNC Audio (kclient):**
 
@@ -864,23 +802,15 @@ The container automatically detects your host keyboard layout from:
 
 Supported layouts include: Japanese (jp), US (us), UK (gb), German (de), French (fr), Spanish (es), Italian (it), Korean (kr), Chinese (cn), and more.
 
-**Manual Override:**
+**Manual Override:** set the following variables in `.env` (or via `compose-env.sh` / `./create-devcontainer-config.sh`) when auto-detection does not match your hardware:
 
-```bash
-# Specify keyboard layout manually
-KEYBOARD_LAYOUT=jp ./start-container.sh --gpu intel              # Japanese keyboard
-KEYBOARD_LAYOUT=us ./start-container.sh --gpu intel              # US keyboard
-KEYBOARD_LAYOUT=de ./start-container.sh --gpu intel              # German keyboard
+| Variable | Purpose | Example values |
+|----------|---------|----------------|
+| `KEYBOARD_LAYOUT` | Base layout code | `jp`, `us`, `uk`, `de`, `fr`, `es` |
+| `KEYBOARD_MODEL` | Physical keyboard model | `pc105`, `jp106`, `pc104` |
+| `KEYBOARD_VARIANT` | Layout variant | `dvorak`, `azerty`, `colemak` |
 
-# With keyboard model (for non-standard keyboards)
-KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh --gpu intel  # Japanese 106-key
-
-# With keyboard variant
-KEYBOARD_LAYOUT=us KEYBOARD_VARIANT=dvorak ./start-container.sh --gpu nvidia --all # Dvorak layout
-
-# Full specification
-KEYBOARD_LAYOUT=fr KEYBOARD_MODEL=pc105 KEYBOARD_VARIANT=azerty ./start-container.sh --gpu intel
-```
+Re-run `./create-devcontainer-config.sh` if you prefer an interactive prompt that writes these values to `.devcontainer/.env`.
 
 **Common Keyboard Models:**
 - `pc105` - Standard 105-key PC keyboard (default)
@@ -999,7 +929,7 @@ docker images | grep devcontainer-ubuntu-egl-desktop-base
 sudo netstat -tulpn | grep 8080
 
 # Use a different port
-HTTPS_PORT=8081 ./start-container.sh --gpu nvidia --all
+./start-container.sh --gpu nvidia --all
 ```
 
 ### GPU Not Detected
@@ -1018,9 +948,6 @@ docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi
 ### Permission Issues
 
 ```bash
-# Access as root
-AS_ROOT=true ./shell-container.sh
-
 # Check user ID matches
 id  # on host
 ./shell-container.sh  # then run 'id' inside container
@@ -1084,9 +1011,9 @@ echo $KEYBOARD_LAYOUT  # Should match your system
 # Verify host keyboard configuration
 cat /etc/default/keyboard
 
-# Override with correct layout
+# Override keyboard settings during start (see README for supported values)
 ./stop-container.sh rm
-KEYBOARD_LAYOUT=jp KEYBOARD_MODEL=jp106 ./start-container.sh --gpu intel
+./start-container.sh --gpu intel
 ```
 
 **For Japanese keyboards specifically:**
@@ -1154,14 +1081,7 @@ This is expected behavior. Display mode (Selkies/KasmVNC) cannot be changed for 
 
 ### Rebuilding Images
 
-```bash
-# Rebuild user image without cache
-NO_CACHE=true ./build-user-image.sh
-
-# Pull latest base image
-docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:latest
-./build-user-image.sh
-```
+To rebuild without cache, export `NO_CACHE=true` before running `build-user-image.sh`. Pull newer base images with `docker pull ghcr.io/tatsuyai713/devcontainer-ubuntu-egl-desktop-base:latest` and rerun the script afterward.
 
 ---
 
@@ -1242,15 +1162,7 @@ docker-compose -f docker-compose.user.yml down
 
 **AMD/Intel GPUs:**
 
-```bash
-VIDEO_ENCODER=vah264enc ./start-container.sh --gpu intel
-```
-
-**Software Rendering (No GPU):**
-
-```bash
-VIDEO_ENCODER=x264enc ./start-container.sh
-```
+Set `VIDEO_ENCODER=vah264enc` (Intel/AMD VA-API) or `VIDEO_ENCODER=x264enc` (software) in `.env`/`compose-env.sh` before launching if you need to override the automatic encoder selection.
 
 ### Mounting Additional Volumes
 
@@ -1264,15 +1176,9 @@ CMD="${CMD} -v /path/on/host:/path/in/container"
 
 Each user should build their own image:
 
-```bash
-# User 1
-USER_PASSWORD=user1pass ./build-user-image.sh
+- Run `build-user-image.sh` separately for each account (it prompts for the password interactively). You can also provide `USER_PASSWORD` via environment variables in automation pipelines.
 
-# User 2 (on same machine)
-USER_PASSWORD=user2pass ./build-user-image.sh
-```
-
-Each will get their own tagged image matching their username and UID/GID:
+Each user receives their own tagged image matching username and UID/GID:
 - Image: `devcontainer-ubuntu-egl-desktop-{username}:24.04`
 - Container: `devcontainer-egl-desktop-{username}`
 
