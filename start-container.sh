@@ -538,7 +538,12 @@ if [ "${ENABLE_TURN}" = "true" ] && [ "${VNC_TYPE}" = "selkies" ]; then
     # TURN_LISTENING_PORT: Internal port for turnserver (always 3478)
     CMD="${CMD} -e TURN_LISTENING_PORT=3478"
     # Get LAN IP address for TURN server
-    LAN_IP=$(ip -4 addr show | grep "inet " | grep -v "127.0.0.1" | grep -v "172.17" | head -1 | awk '{print $2}' | cut -d/ -f1)
+    # For WSL2: prioritize eth0 address (WSL2's main interface)
+    LAN_IP=$(ip -4 addr show eth0 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+    if [ -z "${LAN_IP}" ]; then
+        # Fallback: get first non-loopback, non-docker-bridge IP
+        LAN_IP=$(ip -4 addr show | grep "inet " | grep -v "127.0.0.1" | grep -v "172.17" | head -1 | awk '{print $2}' | cut -d/ -f1)
+    fi
     if [ -n "${LAN_IP}" ]; then
         # SELKIES_TURN_PORT: External port for Selkies client (UID-based)
         CMD="${CMD} -e SELKIES_TURN_HOST=${LAN_IP}"
