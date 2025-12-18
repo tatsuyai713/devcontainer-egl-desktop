@@ -187,7 +187,7 @@ DEVCONTAINER_CONTAINER_NAME="${CONTAINER_NAME}-devcontainer"
 } >> "${ENV_FILE}"
 export DEVCONTAINER_CONTAINER_NAME
 
-WORKSPACE_FOLDER="/home/${CURRENT_USER}/workspace"
+WORKSPACE_FOLDER="/home/${CURRENT_USER}/host_home"
 
 # Build forward port list / attributes
 FORWARD_PORTS=("${HTTPS_PORT}")
