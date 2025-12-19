@@ -259,8 +259,6 @@ EOF
 
 # docker-compose override for devcontainer
 cat > .devcontainer/docker-compose.override.yml << EOF
-version: '3.8'
-
 services:
   egl:
     container_name: \${DEVCONTAINER_CONTAINER_NAME:-devcontainer-egl-desktop-\${USER}-devcontainer}
