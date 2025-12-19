@@ -271,8 +271,12 @@ RUN for chrome_bin in google-chrome google-chrome-beta google-chrome-unstable; d
     done
 
 # Update desktop file to use the wrapper
+# Copy to user's local applications directory so it won't be overwritten by Chrome updates
 RUN if [ -f /usr/share/applications/google-chrome.desktop ]; then \
-    sed -i -e "s#Exec=/usr/bin/google-chrome-stable#Exec=/usr/local/bin/google-chrome-stable#g" /usr/share/applications/google-chrome.desktop; \
+    mkdir -p /home/${USER_NAME}/.local/share/applications && \
+    cp /usr/share/applications/google-chrome.desktop /home/${USER_NAME}/.local/share/applications/google-chrome.desktop && \
+    sed -i -e "s#Exec=/usr/bin/google-chrome-stable#Exec=/usr/local/bin/google-chrome-stable#g" /home/${USER_NAME}/.local/share/applications/google-chrome.desktop && \
+    chown ${USER_UID}:${USER_GID} /home/${USER_NAME}/.local/share/applications/google-chrome.desktop; \
     fi
 
 # Configure keyboard layout based on environment variable
