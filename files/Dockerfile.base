@@ -78,7 +78,6 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
         gzip \
         xz-utils \
         unar \
-        rar \
         unrar \
         zip \
         unzip \
@@ -152,7 +151,6 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
         xserver-xorg-input-all \
         xserver-xorg-input-wacom \
         xserver-xorg-video-all \
-        xserver-xorg-video-intel \
         xserver-xorg-video-qxl \
         xserver-xorg-video-dummy \
         # NVIDIA driver installer dependencies
@@ -660,17 +658,47 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
         libxfixes3 \
         libxv1 \
         libxtst6 \
-        libxext6 && \
-    if [ "$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '\"')" \> "20.04" ]; then apt-get install --no-install-recommends -y xcvt libopenh264-dev svt-av1 aom-tools; else apt-get install --no-install-recommends -y mesa-utils-extra; fi && \
-    # Install Selkies GStreamer components
-    SELKIES_VERSION="$(echo ${SELKIES_VERSION} | sed 's/[^0-9\.\-]*//g')" && \
-    cd /opt && curl -fsSL "https://github.com/selkies-project/selkies/releases/download/v${SELKIES_VERSION}/gstreamer-selkies_gpl_v${SELKIES_VERSION}_ubuntu$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '\"')_$(dpkg --print-architecture).tar.gz" | tar -xzf - && \
-    cd /tmp && curl -O -fsSL "https://github.com/selkies-project/selkies/releases/download/v${SELKIES_VERSION}/selkies_gstreamer-${SELKIES_VERSION}-py3-none-any.whl" && pip3 install --no-cache-dir --force-reinstall "selkies_gstreamer-${SELKIES_VERSION}-py3-none-any.whl" "websockets<14.0" && rm -f "selkies_gstreamer-${SELKIES_VERSION}-py3-none-any.whl" && \
-    cd /opt && curl -fsSL "https://github.com/selkies-project/selkies/releases/download/v${SELKIES_VERSION}/selkies-gstreamer-web_v${SELKIES_VERSION}.tar.gz" | tar -xzf - && \
-    # Patch Selkies web client to disable HiDPI/Retina scaling (force devicePixelRatio to 1.0)
-    sed -i 's/window\.devicePixelRatio/1.0/g' /opt/gst-web/app.js /opt/gst-web/input.js /opt/gst-web/signalling.js && \
-    cd /tmp && curl -o selkies-js-interposer.deb -fsSL "https://github.com/selkies-project/selkies/releases/download/v${SELKIES_VERSION}/selkies-js-interposer_v${SELKIES_VERSION}_ubuntu$(grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | tr -d '\"')_$(dpkg --print-architecture).deb" && apt-get update && apt-get install --no-install-recommends -y ./selkies-js-interposer.deb && rm -f selkies-js-interposer.deb && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
+        libxext6 && \RUN set -eux; \
+    UBUNTU_VERSION="$(. /etc/os-release && echo "${VERSION_ID}")"; \
+    ARCH="$(dpkg --print-architecture)"; \
+    case "${ARCH}" in amd64|arm64) ;; *) echo "Unsupported arch: ${ARCH} (supported: amd64/arm64)"; exit 1 ;; esac; \
+    \
+    if dpkg --compare-versions "${UBUNTU_VERSION}" gt "20.04"; then \
+      apt-get install --no-install-recommends -y xcvt libopenh264-dev svt-av1 aom-tools; \
+    else \
+      apt-get install --no-install-recommends -y mesa-utils-extra; \
+    fi; \
+    \
+    SELKIES_VERSION="$(echo "${SELKIES_VERSION}" | sed 's/[^0-9.\-]*//g')"; \
+    BASE="https://github.com/selkies-project/selkies/releases/download/v${SELKIES_VERSION}"; \
+    \
+    cd /opt; \
+    if [ "${ARCH}" = "amd64" ]; then \
+      curl -fsSL "${BASE}/gstreamer-selkies_gpl_v${SELKIES_VERSION}_ubuntu${UBUNTU_VERSION}_amd64.tar.gz" | tar -xzf -; \
+    else \
+      echo "NOTE: gstreamer-selkies_gpl は v${SELKIES_VERSION} では amd64 のみ想定のため、arm64 ではスキップします"; \
+    fi; \
+    \
+    cd /tmp; \
+    curl -fsSLo "selkies_gstreamer-${SELKIES_VERSION}-py3-none-any.whl" \
+      "${BASE}/selkies_gstreamer-${SELKIES_VERSION}-py3-none-any.whl"; \
+    pip3 install --no-cache-dir --force-reinstall \
+      "selkies_gstreamer-${SELKIES_VERSION}-py3-none-any.whl" "websockets<14.0"; \
+    rm -f "selkies_gstreamer-${SELKIES_VERSION}-py3-none-any.whl"; \
+    \
+    cd /opt; \
+    curl -fsSL "${BASE}/selkies-gstreamer-web_v${SELKIES_VERSION}.tar.gz" | tar -xzf -; \
+    sed -i 's/window\.devicePixelRatio/1.0/g' /opt/gst-web/app.js /opt/gst-web/input.js /opt/gst-web/signalling.js; \
+    \
+    cd /tmp; \
+    curl -fsSLo selkies-js-interposer.deb \
+      "${BASE}/selkies-js-interposer_v${SELKIES_VERSION}_ubuntu${UBUNTU_VERSION}_${ARCH}.deb"; \
+    apt-get update; \
+    apt-get install --no-install-recommends -y ./selkies-js-interposer.deb; \
+    rm -f selkies-js-interposer.deb; \
+    \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/* /var/cache/debconf/* /var/log/* /tmp/* /var/tmp/*
 
 # Install the KasmVNC web interface and RustDesk for fallback
 RUN KASMVNC_VERSION="$(echo ${KASMVNC_VERSION} | sed 's/[^0-9\.\-]*//g')" && \
@@ -693,8 +721,14 @@ RUN apt-get update && \
         pulseaudio-utils && \
     mkdir -p /var/run/pulse && \
     mkdir -p /kasmbins && \
-    echo "Downloading kasmbins from https://kasm-ci.s3.amazonaws.com/kasmbins-amd64-${KASMBINS_RELEASE}.tar.gz" && \
-    curl -L -v -o /tmp/kasmbins.tar.gz https://kasm-ci.s3.amazonaws.com/kasmbins-amd64-${KASMBINS_RELEASE}.tar.gz && \
+    ARCH_SUFFIX="$(dpkg --print-architecture)" && \
+    case "${ARCH_SUFFIX}" in \
+      amd64)    ARCH_SUFFIX="amd64" ;; \
+      arm64|aarch64) ARCH_SUFFIX="arm64" ;; \
+      *) echo "Unsupported architecture for kasmbins: ${ARCH_SUFFIX}"; exit 1 ;; \
+    esac && \
+    echo "Downloading kasmbins from https://kasm-ci.s3.amazonaws.com/kasmbins-${ARCH_SUFFIX}-${KASMBINS_RELEASE}.tar.gz" && \
+    curl -L -v -o /tmp/kasmbins.tar.gz "https://kasm-ci.s3.amazonaws.com/kasmbins-${ARCH_SUFFIX}-${KASMBINS_RELEASE}.tar.gz" && \
     echo "Download completed. File info:" && \
     ls -la /tmp/kasmbins.tar.gz && \
     file /tmp/kasmbins.tar.gz && \
